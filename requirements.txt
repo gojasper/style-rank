@@ -1,0 +1,6 @@
+diffusers==0.29.2
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.2.0
+torchaudio
+torchvision
+xformers

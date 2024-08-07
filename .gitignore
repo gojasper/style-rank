@@ -1,0 +1,40 @@
+
+# Environments
+.env
+.venv
+.vscode
+env/
+envs/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# extensions
+*.pyc
+*.ckpt
+*.pth
+*.safetensors
+*.trt
+*.onnx
+*.tar
+*.sh
+*.gstmp
+# *.ipynb
+*.csv
+
+# cache
+__pycache__
+src/stylebench.egg-info
+build
+*.DS_Store
+doc/build
+src/stylebench.egg-info
+
+# Output
+output/*
+!output/.gitkeep
+
+# Data
+data/*
+!data/.gitkeep
