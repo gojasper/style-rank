@@ -22,8 +22,8 @@ from stylebench.data.mappers import (
 from stylebench.models.stylealigned import StyleAlignedConfig, StyleAlignedModel
 
 # ENV VARIABLES
-PATH = os.path.dirname(os.path.abspath(__file__))  # gives examples/benchmark
-PARENT_PATH = Path(PATH).parent.parent
+PATH = os.path.dirname(os.path.abspath(__file__))
+PARENT_PATH = Path(PATH).parent.parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
 OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/stylealigned")
@@ -114,6 +114,9 @@ if __name__ == "__main__":
             prompts,
             style_prompt=reference_image_caption,
         )
+
+        # Pop 1st image (reference)
+        images.pop(0)
 
         for i, img in enumerate(images):
             img.save(os.path.join(OUTPUT_PATH, f"{key}_{prompts[i]}.png"))

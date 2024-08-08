@@ -22,7 +22,7 @@ from stylebench.data.mappers import (
 from stylebench.models.visualstyle import VisualStyleConfig, VisualStyleModel
 
 # ENV VARIABLES
-PATH = os.path.dirname(os.path.abspath(__file__))  # gives examples/benchmark
+PATH = os.path.dirname(os.path.abspath(__file__))
 PARENT_PATH = Path(PATH).parent.parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")

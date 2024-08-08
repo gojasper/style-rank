@@ -22,8 +22,8 @@ from stylebench.data.mappers import (
 from stylebench.models.ip_adapters import IPAdapterConfig, IPAdapterModel
 
 # ENV VARIABLES
-PATH = os.path.dirname(os.path.abspath(__file__))  # gives examples/benchmark
-PARENT_PATH = Path(PATH).parent.parent
+PATH = os.path.dirname(os.path.abspath(__file__))
+PARENT_PATH = Path(PATH).parent.parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
 OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/ip_adapters")
@@ -66,10 +66,11 @@ def get_data_module(DATA_PATH):
 
 
 def get_model():
+    # Instant Style Method
     config = IPAdapterConfig(
         adapter_scale=[
             {
-                "down": {"block_2": [0.0, 1.0]},
+                # "down": {"block_2": [0.0, 1.0]},
                 "up": {"block_0": [0.0, 1.0, 0.0]},
             }
         ]
