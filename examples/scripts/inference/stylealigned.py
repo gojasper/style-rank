@@ -25,7 +25,7 @@ from stylebench.models.stylealigned import StyleAlignedConfig, StyleAlignedModel
 PATH = os.path.dirname(os.path.abspath(__file__))  # gives examples/benchmark
 PARENT_PATH = Path(PATH).parent.parent
 
-DATA_PATH = os.path.join(PARENT_PATH, "data/fixed_papers.tar")
+DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
 OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/stylealigned")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -118,4 +118,4 @@ if __name__ == "__main__":
         for i, img in enumerate(images):
             img.save(os.path.join(OUTPUT_PATH, f"{key}_{prompts[i]}.png"))
 
-        break
+        raise NotImplementedError

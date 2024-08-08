@@ -23,9 +23,9 @@ from stylebench.models.visualstyle import VisualStyleConfig, VisualStyleModel
 
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))  # gives examples/benchmark
-PARENT_PATH = Path(PATH).parent.parent
+PARENT_PATH = Path(PATH).parent.parent.parent
 
-DATA_PATH = os.path.join(PARENT_PATH, "data/fixed_papers.tar")
+DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
 OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/visualstyle")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)

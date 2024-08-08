@@ -25,7 +25,7 @@ from stylebench.models.ip_adapters import IPAdapterConfig, IPAdapterModel
 PATH = os.path.dirname(os.path.abspath(__file__))  # gives examples/benchmark
 PARENT_PATH = Path(PATH).parent.parent
 
-DATA_PATH = os.path.join(PARENT_PATH, "data/fixed_papers.tar")
+DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
 OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/ip_adapters")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -98,7 +98,6 @@ if __name__ == "__main__":
 
         # Get images and data
         image, data, key = batch["image"][0], batch["json"][0], batch["__key__"][0]
-        continue
 
         # format
         # image_tensor = process_image(image)
