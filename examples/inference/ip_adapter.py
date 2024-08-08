@@ -23,10 +23,10 @@ from stylebench.models.ip_adapters import IPAdapterConfig, IPAdapterModel
 
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))
-PARENT_PATH = Path(PATH).parent.parent.parent
+PARENT_PATH = Path(PATH).parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
-OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/ip_adapters")
+OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/instant_style")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
@@ -67,14 +67,7 @@ def get_data_module(DATA_PATH):
 
 def get_model():
     # Instant Style Method
-    config = IPAdapterConfig(
-        adapter_scale=[
-            {
-                # "down": {"block_2": [0.0, 1.0]},
-                "up": {"block_0": [0.0, 1.0, 0.0]},
-            }
-        ]
-    )
+    config = IPAdapterConfig()
     model = IPAdapterModel(config)
     return model
 

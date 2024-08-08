@@ -1,15 +1,11 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import torch
 from diffusers import DDIMScheduler, StableDiffusionXLPipeline
 
-from stylebench.models.stylealigned.src.inversion import (
-    ddim_inversion,
-    make_inversion_callback,
-)
-from stylebench.models.stylealigned.src.sa_handler import Handler
-
 from ..base.base_model import BaseModel
+from .src.inversion import ddim_inversion, make_inversion_callback
+from .src.sa_handler import Handler
 from .stylealigned_config import StyleAlignedConfig
 
 

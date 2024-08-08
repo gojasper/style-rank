@@ -19,14 +19,14 @@ from stylebench.data.mappers import (
     TorchvisionMapper,
     TorchvisionMapperConfig,
 )
-from stylebench.models.visualstyle import VisualStyleConfig, VisualStyleModel
+from stylebench.models.ip_adapters import IPAdapterConfig, IPAdapterModel
 
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))
-PARENT_PATH = Path(PATH).parent.parent.parent
+PARENT_PATH = Path(PATH).parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
-OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/visualstyle")
+OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/ip_adapters")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
@@ -66,8 +66,16 @@ def get_data_module(DATA_PATH):
 
 
 def get_model():
-    config = VisualStyleConfig()
-    model = VisualStyleModel(config)
+    # Instant Style Method
+    config = IPAdapterConfig(
+        adapter_scale=[
+            {
+                # "down": {"block_2": [0.0, 1.0]},
+                "up": {"block_0": [0.0, 1.0, 0.0]},
+            }
+        ]
+    )
+    model = IPAdapterModel(config)
     return model
 
 
@@ -86,6 +94,7 @@ if __name__ == "__main__":
     dataloader = data_module.train_dataloader()
     model = get_model()
 
+    valid_keys = []
     for batch in tqdm(dataloader):
 
         # Get images and data
@@ -112,11 +121,10 @@ if __name__ == "__main__":
         images = model.sample(
             input_batch,
             prompts,
-            style_prompt=reference_image_caption,
-            num_inference_steps=50,
+            num_inference_steps=30,
         )
 
         for i, img in enumerate(images):
-            img.save(os.path.join(OUTPUT_PATH, f"new/{key}_{prompts[i]}.png"))
+            img.save(os.path.join(OUTPUT_PATH, f"{key}_{prompts[i]}.png"))
 
         raise NotImplementedError

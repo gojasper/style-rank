@@ -23,6 +23,7 @@ setup(
     packages=find_packages(where="src"),
     install_requires=[
         "black>=24.2.0",
+        "controlnet-aux==0.0.7",
         "einops==0.7.0",
         "isort>=5.13.2",
         "lightning==2.2.5",

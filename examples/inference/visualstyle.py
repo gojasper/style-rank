@@ -19,14 +19,14 @@ from stylebench.data.mappers import (
     TorchvisionMapper,
     TorchvisionMapperConfig,
 )
-from stylebench.models.stylealigned import StyleAlignedConfig, StyleAlignedModel
+from stylebench.models.visualstyle import VisualStyleConfig, VisualStyleModel
 
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))
-PARENT_PATH = Path(PATH).parent.parent.parent
+PARENT_PATH = Path(PATH).parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
-OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/stylealigned")
+OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/visualstyle")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
@@ -66,8 +66,8 @@ def get_data_module(DATA_PATH):
 
 
 def get_model():
-    config = StyleAlignedConfig()
-    model = StyleAlignedModel(config)
+    config = VisualStyleConfig()
+    model = VisualStyleModel(config)
     return model
 
 
@@ -113,12 +113,10 @@ if __name__ == "__main__":
             input_batch,
             prompts,
             style_prompt=reference_image_caption,
+            num_inference_steps=50,
         )
 
-        # Pop 1st image (reference)
-        images.pop(0)
-
         for i, img in enumerate(images):
-            img.save(os.path.join(OUTPUT_PATH, f"{key}_{prompts[i]}.png"))
+            img.save(os.path.join(OUTPUT_PATH, f"new/{key}_{prompts[i]}.png"))
 
         raise NotImplementedError

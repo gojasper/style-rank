@@ -15,7 +15,6 @@ class VisualStyleModel(BaseModel):
 
         self.pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
-            # torch_dtype=torch.float16,
             use_safetensors=True,
         )
 

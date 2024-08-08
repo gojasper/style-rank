@@ -7,7 +7,7 @@ from webdataset import DataPipeline
 from ..filters import BaseFilter, FilterWrapper
 from ..mappers import BaseMapper, MapperWrapper
 from .collation_fn import custom_collation_fn
-from .datasets_config import DataModuleConfig
+from .dataset_config import DataModuleConfig
 
 
 class DataPipeline:

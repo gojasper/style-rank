@@ -1,9 +1,8 @@
 import numpy as np
 from pydantic.dataclasses import dataclass
 
-from stylebench.models.stylealigned.src.sa_handler import StyleAlignedArgs
-
 from ..base.model_config import ModelConfig
+from .src.sa_handler import StyleAlignedArgs
 
 
 @dataclass
