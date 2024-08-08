@@ -4,3 +4,4 @@ torch==2.2.0
 torchaudio
 torchvision
 xformers
+clip @ git+https://github.com/openai/CLIP.git

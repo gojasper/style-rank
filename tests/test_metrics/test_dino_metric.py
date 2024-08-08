@@ -56,16 +56,14 @@ class TestDinov2Metric:
 
     def conditioner_input_1(self):
         image_pil = Image.open(
-            os.path.join(
-                Path(PATH).parent, "data/reference_images/pixart_alpha_sampling.png"
-            )
+            os.path.join(Path(PATH).parent, "reference_images/raccoon_1.png")
         ).convert("RGB")
         image_tensor = pil_to_tensor(image_pil).unsqueeze(0) / 255.0
         return image_tensor
 
     def conditioner_input_2(self):
         image_pil = Image.open(
-            os.path.join(Path(PATH).parent, "data/reference_images/sdxl_sampling.png")
+            os.path.join(Path(PATH).parent, "reference_images/raccoon_2.png")
         ).convert("RGB")
         image_tensor = pil_to_tensor(image_pil).unsqueeze(0) / 255.0
         return image_tensor
