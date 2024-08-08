@@ -21,13 +21,11 @@ Release for the style control project for uniform Benchmarking of style control 
   - [x] Models
   - [x] Datasets
 
-- [ ] Implement Metrics
+- [x] Implement Metrics
   - [x] CLIP Text
   - [x] CLIP Image
-  - [ ] Dino (v1&2)
-    - [ ] DinoV1
-    - [x] DinoV2
-  - [ ] Image Reward
+  - [x] Dino (v2)
+  - [x] Image Reward
 
 - [ ] Implement Models
   - [x] Visualstyle

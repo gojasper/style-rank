@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import numpy as np
 import pillow_avif
 import torch
 from PIL import Image

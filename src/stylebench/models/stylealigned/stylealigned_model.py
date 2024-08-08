@@ -14,17 +14,11 @@ class StyleAlignedModel(BaseModel):
         super().__init__(config)
         self.config = config
         self.pipe = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
+            self.config.sdxl_version,
             torch_dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
-            scheduler=DDIMScheduler(
-                beta_start=0.00085,
-                beta_end=0.012,
-                beta_schedule="scaled_linear",
-                clip_sample=False,
-                set_alpha_to_one=False,
-            ),
+            scheduler=DDIMScheduler(**config.scheduler_config),
         )
         self.pipe.enable_vae_tiling()
 

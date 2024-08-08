@@ -9,6 +9,7 @@ from ..base.model_config import ModelConfig
 class IPAdapterConfig(ModelConfig):
     """A configuration class for the IP-Adapter Model"""
 
+    sdxl_version: str = "stabilityai/stable-diffusion-xl-base-1.0"
     adapter_scale: List[Union[float, Dict[str, Dict]]] = 1.0
     version: str = "h94/IP-Adapter"
     subfolder: str = "sdxl_models"

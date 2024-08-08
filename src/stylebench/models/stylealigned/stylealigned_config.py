@@ -21,6 +21,16 @@ class StyleAlignedConfig(ModelConfig):
     shared_score_shift: float = np.log(2)
     shared_score_scale: float = 1
 
+    sdxl_version: str = "stabilityai/stable-diffusion-xl-base-1.0"
+
+    scheduler_config = {
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "clip_sample": False,
+        "set_alpha_to_one": False,
+    }
+
     def __post_init__(self):
         self.args = StyleAlignedArgs(
             share_group_norm=self.share_group_norm,

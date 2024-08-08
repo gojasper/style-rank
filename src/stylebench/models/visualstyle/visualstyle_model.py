@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 
 import torch
+from PIL import Image
 
 from ..base.base_model import BaseModel
 from .src.pipelines.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
@@ -14,7 +15,7 @@ class VisualStyleModel(BaseModel):
         self.config = config
 
         self.pipe = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
+            self.config.sdxl_version,
             use_safetensors=True,
         )
 
@@ -64,6 +65,7 @@ class VisualStyleModel(BaseModel):
         style_image = (style_image + 1) / 2
         style_image = (style_image * 255).cpu().numpy().astype("uint8")
         style_image = style_image[0].transpose(1, 2, 0)
+        style_image = Image.fromarray(style_image)
 
         latents = torch.randn([2, 4, 128, 128], device="cpu").to(self.device)
 
@@ -87,7 +89,7 @@ class VisualStyleModel(BaseModel):
                 use_advanced_sampling=self.config.use_advanced_sampling,
                 use_prompt_as_null=self.config.use_prompt_as_null,
                 *args,
-                **kwargs,
+                **kwargs
             )[0]
 
             generated_image = images[1]

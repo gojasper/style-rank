@@ -19,7 +19,7 @@ class TestImageRewardMetric:
     @pytest.fixture()
     def metric_config(self):
         """
-        Return Dinov2MetricConfig
+        Return ImageRewardMetricConfig
         """
         metric_config = ImageRewardMetricConfig()
         return metric_config

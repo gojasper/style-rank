@@ -8,6 +8,7 @@ from ..base.model_config import ModelConfig
 class VisualStyleConfig(ModelConfig):
     """A configuration class for the VisualStyle Model"""
 
+    sdxl_version: str = "stabilityai/stable-diffusion-xl-base-1.0"
     use_inf_negative_prompt: bool = True
     use_advanced_sampling: bool = True
     use_prompt_as_null: bool = True

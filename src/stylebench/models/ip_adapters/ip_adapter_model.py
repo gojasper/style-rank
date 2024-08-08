@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 import torch
 from diffusers import StableDiffusionXLPipeline
@@ -13,7 +13,7 @@ class IPAdapterModel(BaseModel):
 
         self.config = config
         self.pipe = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
+            self.config.sdxl_version,
             torch_dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
