@@ -26,7 +26,7 @@ PATH = os.path.dirname(os.path.abspath(__file__))
 PARENT_PATH = Path(PATH).parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
-OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/visualstyle")
+OUTPUT_PATH = os.path.join(PARENT_PATH, "output/inference/visualstyle")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
@@ -71,14 +71,6 @@ def get_model():
     return model
 
 
-def process_image(image):
-    image = image.convert("RGB").resize((1024, 1024), resample=Image.BICUBIC)
-    image_tensor = pil_to_tensor(image).unsqueeze(0)
-    image_tensor = image_tensor * 2 - 1
-
-    return image_tensor
-
-
 if __name__ == "__main__":
 
     data_module = get_data_module(DATA_PATH)
@@ -91,8 +83,6 @@ if __name__ == "__main__":
         # Get images and data
         image, data, key = batch["image"][0], batch["json"][0], batch["__key__"][0]
 
-        # format
-        # image_tensor = process_image(image)
         image_tensor = image.unsqueeze(0)
         key = key.split("/")[-1].split(".")[0]
 
@@ -116,7 +106,15 @@ if __name__ == "__main__":
             num_inference_steps=50,
         )
 
-        for i, img in enumerate(images):
-            img.save(os.path.join(OUTPUT_PATH, f"new/{key}_{prompts[i]}.png"))
+        os.makedirs(os.path.join(OUTPUT_PATH, key), exist_ok=True)
 
-        raise NotImplementedError
+        for i, img in enumerate(images):
+            img.save(
+                os.path.join(OUTPUT_PATH, key, f"{prompts[i].replace(' ', '_')}.png")
+            )
+
+        # Save ref Image
+        ref_image = ((image + 1) / 2) * 255
+        ref_image = ref_image.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+        ref_image = Image.fromarray(ref_image)
+        ref_image.save(os.path.join(OUTPUT_PATH, key, "reference.png"))

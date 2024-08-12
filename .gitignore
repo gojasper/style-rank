@@ -37,4 +37,4 @@ output/*
 
 # Data
 data/*
-!data/.gitkeep
+!data/prompts.json
