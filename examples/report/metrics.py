@@ -7,6 +7,7 @@ import pillow_avif
 import torch
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
+from tqdm import tqdm
 
 from stylebench.embedders import (
     ClipEmbedderConfig,
@@ -24,6 +25,7 @@ from stylebench.metrics import (
 
 PATH = os.path.dirname(os.path.abspath(__file__))
 PARENT_PATH = Path(PATH).parent.parent
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def load_image(image_path):
@@ -33,40 +35,6 @@ def load_image(image_path):
     image_tensor = image_tensor * 2 - 1
 
     return image_tensor
-
-
-def get_data_module(DATA_PATH):
-
-    data_module_config = DataModuleConfig(
-        shards_path_or_urls=str(DATA_PATH),
-        per_worker_batch_size=1,
-        num_workers=1,
-        decoder="pil",
-    )
-
-    filters_map = [
-        KeyFilter(KeyFilterConfig(keys=["jpg", "json"], mode="keep")),
-        MapperWrapper(
-            [
-                KeyRenameMapper(KeyRenameMapperConfig(key_map={"jpg": "image"})),
-                TorchvisionMapper(
-                    TorchvisionMapperConfig(
-                        key="image",
-                        transforms=["CenterCrop", "ToTensor"],
-                        transforms_kwargs=[
-                            {"size": (1024, 1024)},
-                            {},
-                        ],
-                    )
-                ),
-                RescaleMapper(RescaleMapperConfig(key="image")),
-            ]
-        ),
-    ]
-
-    data_module = DataModule(data_module_config, filters_map)
-
-    return data_module
 
 
 def get_metric_config(
@@ -123,7 +91,7 @@ def main(
 
     # Load data
     if input_path is None:
-        input_path = os.path.join(PARENT_PATH, "output", "inference")
+        input_path = os.path.join(PARENT_PATH, "output", "test")
     if ouptut_path is None:
         ouptut_path = os.path.join(PARENT_PATH, "output", "metrics")
 
@@ -132,7 +100,7 @@ def main(
     df = pd.DataFrame(columns=["key", "prompt", "model", *metrics])
     for metric, name in zip(metrics_model, metrics):
 
-        for root, _, files in os.walk(input_path):
+        for root, _, files in tqdm(os.walk(input_path), desc=f"Computing {name}"):
             folder_name = Path(root).parent
             key = Path(root).name
 
@@ -161,7 +129,7 @@ def main(
             batch_2 = {"image": torch.cat(images)}
 
             # Compute metrics
-            output = metric(batch_1, batch_2)
+            output = metric(batch_1, batch_2, device=DEVICE)
 
             # Save metrics by concat
             for i, prompt in enumerate(prompts):
@@ -173,9 +141,15 @@ def main(
                 }
                 df = pd.concat([df, pd.DataFrame(row, index=[0])])
 
+    # Aggregate
+    merged_df = (
+        df.groupby(["key", "prompt", "model"])
+        .agg({metric: "first" for metric in metrics})
+        .reset_index()
+    )
     os.makedirs(ouptut_path, exist_ok=True)
-    df.to_csv(os.path.join(ouptut_path, "metrics.csv"), index=False)
+    merged_df.to_csv(os.path.join(ouptut_path, "metrics.csv"), index=False)
 
 
 if __name__ == "__main__":
-    main(metrics=["ClipImage", "ClipText"])
+    main(metrics=["ClipImage", "ClipText", "Dinov2", "ImageReward"])

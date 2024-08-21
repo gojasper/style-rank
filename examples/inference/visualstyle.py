@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -27,6 +28,7 @@ PARENT_PATH = Path(PATH).parent.parent
 
 DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
 OUTPUT_PATH = os.path.join(PARENT_PATH, "output/inference/visualstyle")
+JSON_PATH = os.path.join(PARENT_PATH, "data/prompts.json")
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
@@ -71,12 +73,19 @@ def get_model():
     return model
 
 
+def get_json(json_path: str):
+    with open(json_path, "r") as f:
+        data = json.load(f)
+    return data
+
+
 if __name__ == "__main__":
 
     data_module = get_data_module(DATA_PATH)
     data_module.setup()
     dataloader = data_module.train_dataloader()
     model = get_model()
+    all_prompts = get_json(JSON_PATH)["content"]
 
     for batch in tqdm(dataloader):
 
@@ -87,14 +96,8 @@ if __name__ == "__main__":
         key = key.split("/")[-1].split(".")[0]
 
         reference_image_caption = data["caption_blip"]
-        prompts = [
-            "a robot",
-            "a cat",
-            "an airplane",
-            "a human",
-            "the eiffel tower",
-            "a bird",
-        ]
+        prompts = np.random.choice(all_prompts, 4, replace=False)
+        prompts = prompts.tolist()
 
         input_batch = {"image": image_tensor.to("cuda")}
         model.to("cuda")

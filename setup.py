@@ -36,6 +36,7 @@ setup(
         "sentencepiece>=0.2.0",
         "timm==0.9.16",
         "tokenizers>=0.15.2",
+        "tqdm>=4.66.0",
         "transformers==4.38.0",
         "wandb==0.16.2",
         "webdataset>=0.2.86",
