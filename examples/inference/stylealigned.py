@@ -1,7 +1,9 @@
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
+import fire
 import numpy as np
 import pillow_avif
 import torch
@@ -25,12 +27,6 @@ from stylebench.models.stylealigned import StyleAlignedConfig, StyleAlignedModel
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))
 PARENT_PATH = Path(PATH).parent.parent
-
-DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
-OUTPUT_PATH = os.path.join(PARENT_PATH, "output/inference/stylealigned")
-JSON_PATH = os.path.join(PARENT_PATH, "data/prompts.json")
-
-os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 
 def get_data_module(DATA_PATH):
@@ -79,13 +75,26 @@ def get_json(json_path: str):
     return data
 
 
-if __name__ == "__main__":
+def main(
+    input_path: Optional[str] = None,
+    output_path: Optional[str] = None,
+    json_path: Optional[str] = None,
+):
 
-    data_module = get_data_module(DATA_PATH)
+    if input_path is None:
+        input_path = os.path.join(PARENT_PATH, "data/stylebench_papers.tar")
+    if output_path is None:
+        output_path = os.path.join(PARENT_PATH, "output/inference/instant_style")
+    if json_path is None:
+        json_path = os.path.join(PARENT_PATH, "data/prompts.json")
+
+    os.makedirs(output_path, exist_ok=True)
+
+    data_module = get_data_module(input_path)
     data_module.setup()
     dataloader = data_module.train_dataloader()
     model = get_model()
-    all_prompts = get_json(JSON_PATH)["content"]
+    all_prompts = get_json(json_path)["content"]
 
     for batch in tqdm(dataloader):
 
@@ -111,15 +120,19 @@ if __name__ == "__main__":
         # Pop 1st image (reference)
         images.pop(0)
 
-        os.makedirs(os.path.join(OUTPUT_PATH, key), exist_ok=True)
+        os.makedirs(os.path.join(output_path, key), exist_ok=True)
 
         for i, img in enumerate(images):
             img.save(
-                os.path.join(OUTPUT_PATH, key, f"{prompts[i].replace(' ', '_')}.png")
+                os.path.join(output_path, key, f"{prompts[i].replace(' ', '_')}.png")
             )
 
         # Save ref Image
         ref_image = ((image + 1) / 2) * 255
         ref_image = ref_image.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
         ref_image = Image.fromarray(ref_image)
-        ref_image.save(os.path.join(OUTPUT_PATH, key, "reference.png"))
+        ref_image.save(os.path.join(output_path, key, "reference.png"))
+
+
+if __name__ == "__main__":
+    fire.Fire(main)

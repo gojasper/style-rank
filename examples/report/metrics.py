@@ -1,7 +1,10 @@
 import os
+import signal
+import sys
 from pathlib import Path
 from typing import List, Literal, Optional, Union
 
+import fire
 import pandas as pd
 import pillow_avif
 import torch
@@ -84,20 +87,46 @@ def get_metric(metric_name: Literal["ClipImage", "ClipText", "Dinov2", "ImageRew
 
 
 def main(
-    metrics: List[Literal["ClipImage", "ClipText", "Dinov2", "ImageReward"]],
+    metrics: Union[
+        List[Literal["ClipImage", "ClipText", "Dinov2", "ImageReward"]],
+        Literal["ClipImage", "ClipText", "Dinov2", "ImageReward"],
+    ],
     input_path: Optional[str] = None,
-    ouptut_path: Optional[str] = None,
+    output_path: Optional[str] = None,
 ):
+
+    if isinstance(metrics, str):
+        metrics = [metrics]
 
     # Load data
     if input_path is None:
-        input_path = os.path.join(PARENT_PATH, "output", "test")
-    if ouptut_path is None:
-        ouptut_path = os.path.join(PARENT_PATH, "output", "metrics")
+        input_path = os.path.join(PARENT_PATH, "output", "inference")
+    if output_path is None:
+        output_path = os.path.join(PARENT_PATH, "output", "metrics")
+
+    os.makedirs(output_path, exist_ok=True)
 
     # Load metrics
     metrics_model = [get_metric(metric) for metric in metrics]
     df = pd.DataFrame(columns=["key", "prompt", "model", *metrics])
+
+    # Save metrics even if interrupted
+    def signal_handler(*args):
+        print("Interrupted by user")
+        print("Exiting...")
+
+        merged_df = (
+            df.groupby(["key", "prompt", "model"])
+            .agg({metric: "first" for metric in metrics})
+            .reset_index()
+        )
+        print("Saving metrics at ", os.path.join(output_path, "interrupted.csv"))
+        merged_df.to_csv(os.path.join(output_path, "interrupted.csv"), index=False)
+
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
     for metric, name in zip(metrics_model, metrics):
 
         for root, _, files in tqdm(os.walk(input_path), desc=f"Computing {name}"):
@@ -107,7 +136,7 @@ def main(
             images = []
             prompts = []
 
-            if "reference.png" not in files:
+            if "reference.png" not in files and metric.config.input_key_1 == "image":
                 continue
 
             for file in files:
@@ -141,15 +170,16 @@ def main(
                 }
                 df = pd.concat([df, pd.DataFrame(row, index=[0])])
 
-    # Aggregate
     merged_df = (
         df.groupby(["key", "prompt", "model"])
         .agg({metric: "first" for metric in metrics})
         .reset_index()
     )
-    os.makedirs(ouptut_path, exist_ok=True)
-    merged_df.to_csv(os.path.join(ouptut_path, "metrics.csv"), index=False)
+    merged_df.to_csv(os.path.join(output_path, "metrics.csv"), index=False)
+    merged_df.groupby("model").agg({metric: "mean" for metric in metrics}).to_csv(
+        os.path.join(output_path, "report.csv"), index=False
+    )
 
 
 if __name__ == "__main__":
-    main(metrics=["ClipImage", "ClipText", "Dinov2", "ImageReward"])
+    fire.Fire(main)
