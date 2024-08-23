@@ -80,7 +80,7 @@ class StyleAlignedModel(BaseModel):
         Args:
             batch (Dict[str, Any]): Reference to generate samples from
             prompts (List[str]): A list of prompts to guide the sampling
-            style_prompt (str): The prompt to guide the style (here used of inversion)
+            style_prompt (str): The prompt to guide the style (here used for inversion)
             num_inference_steps (int): The number of inference steps
             guidance_scale (float): The guidance scale for the generation
             num_inversion_steps (int): The number of inversion steps

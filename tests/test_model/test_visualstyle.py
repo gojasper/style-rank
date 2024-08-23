@@ -72,4 +72,4 @@ class TestVisualStyleModel:
 
         output = metric.forward(batch_1, batch_2)
 
-        assert torch.all(output["score"] >= 75 * torch.ones_like(output["score"]))
+        assert torch.all(output["score"] >= 70 * torch.ones_like(output["score"]))

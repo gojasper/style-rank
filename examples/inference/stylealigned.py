@@ -1,6 +1,10 @@
+import json
 import os
 from pathlib import Path
+from typing import List, Optional
 
+import fire
+import numpy as np
 import pillow_avif
 import torch
 from PIL import Image
@@ -23,11 +27,6 @@ from stylebench.models.stylealigned import StyleAlignedConfig, StyleAlignedModel
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))
 PARENT_PATH = Path(PATH).parent.parent
-
-DATA_PATH = os.path.join(PARENT_PATH, "data/papers.tar")
-OUTPUT_PATH = os.path.join(PARENT_PATH, "output/results/stylealigned")
-
-os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 
 def get_data_module(DATA_PATH):
@@ -70,43 +69,49 @@ def get_model():
     return model
 
 
-def process_image(image):
-    image = image.convert("RGB").resize((1024, 1024), resample=Image.BICUBIC)
-    image_tensor = pil_to_tensor(image).unsqueeze(0)
-    image_tensor = image_tensor * 2 - 1
-
-    return image_tensor
+def get_json(json_path: str):
+    with open(json_path, "r") as f:
+        data = json.load(f)
+    return data
 
 
-if __name__ == "__main__":
+def main(
+    input_path: Optional[str] = None,
+    output_path: Optional[str] = None,
+    json_path: Optional[str] = None,
+    prompts: Optional[List[str]] = None,
+):
 
-    data_module = get_data_module(DATA_PATH)
+    if input_path is None:
+        input_path = os.path.join(PARENT_PATH, "data/stylebench_papers.tar")
+    if output_path is None:
+        output_path = os.path.join(PARENT_PATH, "output/inference/style_aligned")
+    if json_path is None:
+        json_path = os.path.join(PARENT_PATH, "data/prompts.json")
+
+    os.makedirs(output_path, exist_ok=True)
+
+    data_module = get_data_module(input_path)
     data_module.setup()
     dataloader = data_module.train_dataloader()
     model = get_model()
+    all_prompts = get_json(json_path)["content"]
+    model.to("cuda")
 
     for batch in tqdm(dataloader):
 
         # Get images and data
         image, data, key = batch["image"][0], batch["json"][0], batch["__key__"][0]
 
-        # format
-        # image_tensor = process_image(image)
         image_tensor = image.unsqueeze(0)
         key = key.split("/")[-1].split(".")[0]
 
         reference_image_caption = data["caption_blip"]
-        prompts = [
-            "a robot",
-            "a cat",
-            "an airplane",
-            "a human",
-            "the eiffel tower",
-            "a bird",
-        ]
+        if prompts is None:
+            prompts = np.random.choice(all_prompts, 4, replace=False)
+            prompts = prompts.tolist()
 
         input_batch = {"image": image_tensor.to("cuda")}
-        model.to("cuda")
 
         images = model.sample(
             input_batch,
@@ -117,7 +122,19 @@ if __name__ == "__main__":
         # Pop 1st image (reference)
         images.pop(0)
 
-        for i, img in enumerate(images):
-            img.save(os.path.join(OUTPUT_PATH, f"{key}_{prompts[i]}.png"))
+        os.makedirs(os.path.join(output_path, key), exist_ok=True)
 
-        raise NotImplementedError
+        for i, img in enumerate(images):
+            img.save(
+                os.path.join(output_path, key, f"{prompts[i].replace(' ', '_')}.png")
+            )
+
+        # Save ref Image
+        ref_image = ((image + 1) / 2) * 255
+        ref_image = ref_image.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+        ref_image = Image.fromarray(ref_image)
+        ref_image.save(os.path.join(output_path, key, "reference.png"))
+
+
+if __name__ == "__main__":
+    fire.Fire(main)

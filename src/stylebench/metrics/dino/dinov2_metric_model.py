@@ -2,10 +2,7 @@ from typing import Any, Dict
 
 import torch
 
-from ...embedders import (
-    Dinov2ImageEmbedderWithProjection,
-    Dinov2ImageEmbedderWithProjectionConfig,
-)
+from ...embedders import Dinov2ImageEmbedderWithProjection
 from ..base import BaseMetric
 from .dinov2_metric_config import Dinov2MetricConfig
 

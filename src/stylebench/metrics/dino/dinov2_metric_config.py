@@ -27,8 +27,13 @@ class Dinov2MetricConfig(BaseMetricConfig):
     def __post_init__(self):
         super().__post_init__()
 
-        self.input_key = self.embedder_config.input_key
+        self.input_key_1 = self.embedder_config.input_key
+        self.input_key_2 = self.embedder_config.input_key
 
         assert (
-            self.input_key == "image"
-        ), f"Expected input_key to be 'image' for embedder, got {self.input_key}"
+            self.input_key_1 == "image"
+        ), f"Expected input_key to be 'image' for embedder, got {self.input_key_1}"
+
+        assert (
+            self.input_key_2 == "image"
+        ), f"Expected input_key to be 'image' for embedder, got {self.input_key_2}"
