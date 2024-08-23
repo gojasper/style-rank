@@ -36,6 +36,8 @@ A Unified benchmarking framework for generative styling models in PyTorch. This 
 
 The dataset is an aggregation of images from multiple styling papers.
 
+ADD LINK FOR DATASET WHEN PUBLISHED (and edit the link badge on top)
+
 ## Setup
 
 To be up and running, you need first to create a virtual env with at least `python3.10` installed and activate it
@@ -75,6 +77,8 @@ python examples/inference/stylealigned.py --input-path /path/to/dataset --output
 ```
 
 Default output path is `output/inference/` and the default input path is `data/stylebench_papers.tar`.
+
+Addtionally, you can provide the `--json_path` argument to use a different json file for the prompts or use the `--prompts` argument to provide a list of prompts to use for the generation.
 
 Iterating throught the provided `.tar` file and generate 4 random images based on the prompts provided in the `prompts.json` file, following a similar evaluation process as the one described in the VisualStyle paper.
 
@@ -130,6 +134,7 @@ When running an inference script, the model will by default createa a folder wit
 │       └── ....
 └── metrics
     ├── interrupted.csv
+    ├── report.csv
     └── metrics.csv
 ```
 
@@ -162,32 +167,6 @@ Running the evaluation on the provided `stylebench_papers.tar` dataset, we get t
 | VisualStyle  | -0.72           | 22.12         | 66.68          | 20.80      |
 | InstantStyle | -0.13           | 22.78         | 66.43          | 18.48      |
 | IP-Adapter   | -2.03           | 15.01         | 83.66          | 40.50      |
-
-## TODO
-
-- [ ] Dataset
-  - [x] Collect and format papers images
-    - [ ] Remove duplicates
-  - [ ] Entreprise grade styling images
-    - [ ] License : Check with Caroline
-
-- [ ] Scripts
-  - [ ] Test CLI scripts with different models and args
-  - [x] Add fire to use metrics with CLI arguments (input, output paths, metrics to compute)
-  - [ ] Add CLI option to run generation on fixed prompts ?
-
-- [ ] README
-  - [x] Badges
-  - [x] Installation instructions
-  - [x] Usage instructions
-  - [x] Report Example
-  - [x] Quote the papers implemented
-  - [ ] License for Code
-  - [ ] Update badges links with dataset when available
-
-- [ ] Dataset handling
-  - [x] Webdataset format
-  - [ ] Check for parquet dataset
   
 ## Tests
 

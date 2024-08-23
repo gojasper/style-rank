@@ -136,7 +136,7 @@ def main(
             images = []
             prompts = []
 
-            if "reference.png" not in files and metric.config.input_key_1 == "image":
+            if "reference.png" not in files:
                 continue
 
             for file in files:
@@ -177,7 +177,7 @@ def main(
     )
     merged_df.to_csv(os.path.join(output_path, "metrics.csv"), index=False)
     merged_df.groupby("model").agg({metric: "mean" for metric in metrics}).to_csv(
-        os.path.join(output_path, "report.csv"), index=False
+        os.path.join(output_path, "report.csv"), index=True
     )
 
 

@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import fire
 import numpy as np
@@ -79,12 +79,13 @@ def main(
     input_path: Optional[str] = None,
     output_path: Optional[str] = None,
     json_path: Optional[str] = None,
+    prompts: Optional[List[str]] = None,
 ):
 
     if input_path is None:
         input_path = os.path.join(PARENT_PATH, "data/stylebench_papers.tar")
     if output_path is None:
-        output_path = os.path.join(PARENT_PATH, "output/inference/instant_style")
+        output_path = os.path.join(PARENT_PATH, "output/inference/style_aligned")
     if json_path is None:
         json_path = os.path.join(PARENT_PATH, "data/prompts.json")
 
@@ -95,6 +96,7 @@ def main(
     dataloader = data_module.train_dataloader()
     model = get_model()
     all_prompts = get_json(json_path)["content"]
+    model.to("cuda")
 
     for batch in tqdm(dataloader):
 
@@ -105,11 +107,11 @@ def main(
         key = key.split("/")[-1].split(".")[0]
 
         reference_image_caption = data["caption_blip"]
-        prompts = np.random.choice(all_prompts, 4, replace=False)
-        prompts = prompts.tolist()
+        if prompts is None:
+            prompts = np.random.choice(all_prompts, 4, replace=False)
+            prompts = prompts.tolist()
 
         input_batch = {"image": image_tensor.to("cuda")}
-        model.to("cuda")
 
         images = model.sample(
             input_batch,
