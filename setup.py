@@ -34,6 +34,7 @@ setup(
         "peft==0.9.0",
         "pillow-avif-plugin==1.4.6",
         "pydantic>=2.6.1",
+        "numpy<=1.26.4",
         "scipy>=1.12.0",
         "sentencepiece>=0.2.0",
         "tokenizers>=0.15.2",

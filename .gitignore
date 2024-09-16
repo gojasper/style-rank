@@ -1,5 +1,5 @@
 
-# Environments
+# environments
 .env
 .venv
 .vscode
@@ -20,7 +20,7 @@ venv.bak/
 *.tar
 *.sh
 *.gstmp
-# *.ipynb
+*.ipynb
 *.csv
 
 # cache
@@ -31,10 +31,10 @@ build
 doc/build
 src/stylebench.egg-info
 
-# Output
+# output
 output/*
 !output/.gitkeep
 
-# Data
+# data
 data/*
 !data/prompts.json

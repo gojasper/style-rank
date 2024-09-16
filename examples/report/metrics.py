@@ -179,6 +179,8 @@ def main(
     merged_df.groupby("model").agg({metric: "mean" for metric in metrics}).to_csv(
         os.path.join(output_path, "report.csv"), index=True
     )
+    print("Metrics saved to ", os.path.join(output_path, "metrics.csv"))
+    print("Report saved to ", os.path.join(output_path, "report.csv"))
 
 
 if __name__ == "__main__":

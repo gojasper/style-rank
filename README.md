@@ -4,7 +4,7 @@
   <a href='https://creativecommons.org/licenses/by-nd/4.0/legalcode'>
     <img src="https://img.shields.io/badge/python-3.10+-purple" />
 	</a>
-  <a href="https://huggingface.co/dataset">
+  <a href="https://huggingface.co/datasets/jasperai/style-bench">
 	    <img src='https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-StyleBench-yellow' />
 	</a>
   <a href="https://github.com/psf/black">
@@ -13,7 +13,7 @@
 </p>
 
 
-A Unified benchmarking framework for generative styling models in PyTorch. This repository contains code wrapping the implementation of several papers in the field of generative styling models and implementation of metrics to evaluate the quality of the generated images. We also provide 1 (2?) dataset for comparison and evaluation of the models.
+A unified benchmarking framework for generative styling models in PyTorch. This repository contains code wrapping the implementation of several papers in the field of generative styling models and implementation of metrics to evaluate the quality of the generated images. We also provide one dataset for comparison and evaluation of the models.
 
 ## Models
 
@@ -27,16 +27,22 @@ A Unified benchmarking framework for generative styling models in PyTorch. This 
 
 ## Metrics
 
-- CLIP-Text metric : Cosine Similarity between a caption (embedded using `ClipTextModel`) and the generated image (embedded using `ClipVisionModel`) - Using the implpementation from [Transformers]()
-- CLIP-Image metric : Cosine Similarity between two images (embedded using `ClipVisionModel`) - Using the implpementation from [Transformers]()
-- Dino : Cosine Similarity between two images (embedded using `Dinov2Model`) - Using the implpementation from [Dino]()
-- ImageReward : Score from the [ImageReward]() model 
+We implemented several common metrics to evaluate the quality of the generated images:
+
+- CLIP-Text metric : Cosine Similarity between a caption (embedded using `ClipTextModel`) and the generated image (embedded using `ClipVisionModel`) - Using the implpementation from [Transformers](https://github.com/huggingface/transformers)
+- CLIP-Image metric : Cosine Similarity between two images (embedded using `ClipVisionModel`) - Using the implpementation from [Transformers](https://github.com/huggingface/transformers)
+- Dino : Cosine Similarity between two images (embedded using `Dinov2Model`) - Using the implpementation from [Dino](https://github.com/facebookresearch/dinov2)
+- ImageReward : Score from the [ImageReward](https://github.com/THUDM/ImageReward?tab=readme-ov-file#install-dependency) model 
 
 ## Dataset
 
-The dataset is an aggregation of images from multiple styling papers.
-
-ADD LINK FOR DATASET WHEN PUBLISHED (and edit the link badge on top)
+The [dataset](https://huggingface.co/datasets/jasperai/style-bench) is an aggregation of images from multiple styling papers:
+- [B-LoRA](https://b-lora.github.io/B-LoRA/)
+- [InstantStyle](https://instantstyle.github.io/)
+- [MagicInsert](https://magicinsert.github.io/)
+- [StyleAligned](https://style-aligned-gen.github.io/)
+- [StyleDrop](https://styledrop.github.io/)
+- [VisualStyle](https://curryjung.github.io/VisualStylePrompt/)
 
 ## Setup
 
@@ -56,6 +62,8 @@ conda create -n style_bench python=3.10
 conda activate style_bench 
 ```
 
+### Install the dependencies
+
 Then install the required dependencies (if on GPU) and the repo in editable mode
 
 ```bash
@@ -66,7 +74,7 @@ pip install -e .
 
 ## Usage
 
-Using the provided code, you can generate stylized images on the provided datasets (or your own given the right format) and evaluate them using the provided metrics.
+Using the provided code, you can generate stylized images on the provided datasets (or your own given the right format) and evaluate them using the provided metrics. Results can fluctuate as the generation is not seeded and the default prompts are sampled from a list of prompts.
 
 ### Scripts
 
@@ -108,7 +116,7 @@ The folder structure should be as follows :
     └── test_model
 ```
 
-When running an inference script, the model will by default createa a folder with it's name to store the generated samples and the reference image using a new folder for each reference (with it's key as name) and the prompts used to generate it. The folder structure should look like this inside the `./output/` folder:
+When running an inference script, the model will by default create a folder with its name to store the generated samples and the reference image using a new folder for each reference (with it's key as name) and the prompts used to generate it. The folder structure should look like this inside the `./output/` folder:
 
 ```bash
 .

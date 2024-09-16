@@ -46,8 +46,9 @@ def get_data_module(DATA_PATH):
                 TorchvisionMapper(
                     TorchvisionMapperConfig(
                         key="image",
-                        transforms=["CenterCrop", "ToTensor"],
+                        transforms=["Resize", "CenterCrop", "ToTensor"],
                         transforms_kwargs=[
+                            {"size": 1023, "max_size": 1024},
                             {"size": (1024, 1024)},
                             {},
                         ],
@@ -98,6 +99,8 @@ def main(
     all_prompts = get_json(json_path)["content"]
     model.to("cuda")
 
+    empty_prompt = prompts is None
+
     for batch in tqdm(dataloader):
 
         # Get images and data
@@ -107,7 +110,8 @@ def main(
         key = key.split("/")[-1].split(".")[0]
 
         reference_image_caption = data["caption_blip"]
-        if prompts is None:
+
+        if empty_prompt:
             prompts = np.random.choice(all_prompts, 4, replace=False)
             prompts = prompts.tolist()
 
