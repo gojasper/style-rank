@@ -1,7 +1,7 @@
 # Style Bench
 
 <p align="center">
-  <a href='https://creativecommons.org/licenses/by-nd/4.0/legalcode'>
+  <a href='https://www.python.org/downloads/release/python-31015/'>
     <img src="https://img.shields.io/badge/python-3.10+-purple" />
 	</a>
   <a href="https://huggingface.co/datasets/jasperai/style-bench">
@@ -29,9 +29,9 @@ A unified benchmarking framework for generative styling models in PyTorch. This 
 
 We implemented several common metrics to evaluate the quality of the generated images:
 
-- CLIP-Text metric : Cosine Similarity between a caption (embedded using `ClipTextModel`) and the generated image (embedded using `ClipVisionModel`) - Using the implpementation from [Transformers](https://github.com/huggingface/transformers)
-- CLIP-Image metric : Cosine Similarity between two images (embedded using `ClipVisionModel`) - Using the implpementation from [Transformers](https://github.com/huggingface/transformers)
-- Dino : Cosine Similarity between two images (embedded using `Dinov2Model`) - Using the implpementation from [Dino](https://github.com/facebookresearch/dinov2)
+- CLIP-Text metric : Cosine Similarity between a caption (embedded using `ClipTextModel`) and the generated image (embedded using `ClipVisionModel`) - Using the implementation from [Transformers](https://github.com/huggingface/transformers)
+- CLIP-Image metric : Cosine Similarity between two images (embedded using `ClipVisionModel`) - Using the implementation from [Transformers](https://github.com/huggingface/transformers)
+- Dino : Cosine Similarity between two images (embedded using `Dinov2Model`) - Using the implementation from [Transformers](https://github.com/huggingface/transformers)
 - ImageReward : Score from the [ImageReward](https://github.com/THUDM/ImageReward?tab=readme-ov-file#install-dependency) model 
 
 ## Dataset
@@ -169,12 +169,13 @@ If you cancel the process, it will automatically save the results in the `/path/
 
 Running the evaluation on the provided `stylebench_papers.tar` dataset, we get the following results :
 
-| **Model**    | **ImageReward** | **Clip-Text** | **Clip-Image** | **Dinov2** |
-| ------------ | --------------- | ------------- | -------------- | ---------- |
-| StyleAligned | -1.26           | 19.26         | 68.72          | 36.29      |
-| VisualStyle  | -0.72           | 22.12         | 66.68          | 20.80      |
-| InstantStyle | -0.13           | 22.78         | 66.43          | 18.48      |
-| IP-Adapter   | -2.03           | 15.01         | 83.66          | 40.50      |
+| **Model**               | **ImageReward** | **Clip-Text** | **Clip-Image** | **Dinov2** |
+| ----------------------- | --------------- | ------------- | -------------- | ---------- |
+| StyleAligned            | -1.26           | 19.26         | 68.72          | 36.29      |
+| VisualStyle             | -0.72           | 22.12         | 66.68          | 20.80      |
+| InstantStyle            | -0.13           | 22.78         | 66.43          | 18.48      |
+| IP-Adapter              | -2.03           | 15.01         | 83.66          | 40.50      |
+| Inversion-InstantStyle  | -1.30           | 18.90         | 76.60          | 49.42      |
   
 ## Tests
 
