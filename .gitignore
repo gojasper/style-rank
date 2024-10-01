@@ -38,3 +38,4 @@ output/*
 data/*
 !data/prompts.json
 !data/grid.png
+!data/clip_text_vs_clip_image.svg

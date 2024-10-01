@@ -203,6 +203,9 @@ Running the evaluation on the provided `stylerank_papers.tar` dataset, we get th
 | InstantStyle            | -0.13           | 22.78         | 66.43          | 18.48      |
 | Inversion-InstantStyle  | -1.30           | 18.90         | 76.60          | 49.42      |
   
+
+<img src="./data/clip_text_vs_clip_image.svg" alt="Results Clip-T vs Clip-I"/>
+
 ## Tests
 
 To run the tests to make sure the models and metrics are working as expected, you need to install pytest and run the tests using the following command :
