@@ -4,15 +4,15 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="stylebench",
+    name="stylerank",
     version="0.1",
     author="Eyal Benaroche",
     author_email="eyal.benaroche@jasper.ai",
     description="Stylying unified benchmark",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/gojasper/style-benchmark",
-    project_urls={"Bug Tracker": "https://github.com/gojasper/style-benchmark/issues"},
+    url="https://github.com/gojasper/style-rank",
+    project_urls={"Bug Tracker": "https://github.com/gojasper/style-rank/issues"},
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",

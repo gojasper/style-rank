@@ -4,10 +4,9 @@ from pathlib import Path
 import pytest
 import torch
 from PIL import Image
-from pydantic import ValidationError
 from torchvision.transforms.functional import pil_to_tensor
 
-from stylebench.metrics import ImageRewardMetric, ImageRewardMetricConfig
+from stylerank.metrics import ImageRewardMetric, ImageRewardMetricConfig
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

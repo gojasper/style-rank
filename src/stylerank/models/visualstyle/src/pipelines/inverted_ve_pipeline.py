@@ -1,24 +1,21 @@
 from __future__ import annotations
-from diffusers import StableDiffusionPipeline
-import torch
-from dataclasses import dataclass
-from typing import Callable, List, Optional, Union, Any, Dict
-import numpy as np
-from diffusers.utils import deprecate, logging, BaseOutput
-from einops import rearrange, repeat
-from torch.nn.functional import grid_sample
-from torch.nn import functional as nnf
-import torchvision.transforms as T
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-from diffusers.models import AutoencoderKL, UNet2DConditionModel, attention_processor
-from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-import PIL
-from PIL import Image
-from collections import OrderedDict
-from packaging import version
+
 import inspect
+from collections import OrderedDict
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Union
+
+import numpy as np
+import PIL
+import torch
+import torch.nn as nn
+import torchvision.transforms as T
+from diffusers import StableDiffusionPipeline
+from diffusers.models import AutoencoderKL, UNet2DConditionModel, attention_processor
+from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
+    BaseOutput,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -26,7 +23,12 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
-import torch.nn as nn
+from einops import rearrange, repeat
+from packaging import version
+from PIL import Image
+from torch.nn import functional as nnf
+from torch.nn.functional import grid_sample
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 T = torch.Tensor
 
@@ -34,16 +36,20 @@ T = torch.Tensor
 @dataclass(frozen=True)
 class StyleAlignedArgs:
     share_group_norm: bool = True
-    share_layer_norm: bool = True,
+    share_layer_norm: bool = (True,)
     share_attention: bool = True
     adain_queries: bool = True
     adain_keys: bool = True
     adain_values: bool = False
     full_attention_share: bool = False
-    keys_scale: float = 1.
-    only_self_level: float = 0.
+    keys_scale: float = 1.0
+    only_self_level: float = 0.0
 
-def expand_first(feat: T, scale=1., ) -> T:
+
+def expand_first(
+    feat: T,
+    scale=1.0,
+) -> T:
     b = feat.shape[0]
     feat_style = torch.stack((feat[0], feat[b // 2])).unsqueeze(1)
     if scale == 1:
@@ -54,7 +60,7 @@ def expand_first(feat: T, scale=1., ) -> T:
     return feat_style.reshape(*feat.shape)
 
 
-def concat_first(feat: T, dim=2, scale=1.) -> T:
+def concat_first(feat: T, dim=2, scale=1.0) -> T:
     feat_style = expand_first(feat, scale=scale)
     return torch.cat((feat, feat_style), dim=dim)
 
@@ -107,10 +113,10 @@ def create_image_grid(image_list, rows, cols, padding=10):
     grid_height = rows * (image_height + padding) - padding
 
     # Create an empty grid image
-    grid_image = Image.new('RGB', (grid_width, grid_height), (255, 255, 255))
+    grid_image = Image.new("RGB", (grid_width, grid_height), (255, 255, 255))
 
     # Paste images into the grid
-    for i, img in enumerate(image_list[:rows * cols]):
+    for i, img in enumerate(image_list[: rows * cols]):
         row = i // cols
         col = i % cols
         x = col * (image_width + padding)
@@ -120,22 +126,18 @@ def create_image_grid(image_list, rows, cols, padding=10):
     return grid_image
 
 
-
-
 class CrossFrameAttnProcessor_backup:
     def __init__(self, unet_chunk_size=2):
         self.unet_chunk_size = unet_chunk_size
 
     def __call__(
-            self,
-            attn,
-            hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=None):
-        
+        self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None
+    ):
 
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
         query = attn.to_q(hidden_states)
 
         is_cross_attention = encoder_hidden_states is not None
@@ -162,7 +164,6 @@ class CrossFrameAttnProcessor_backup:
             value = value[:, former_frame_index]
             value = rearrange(value, "b f d c -> (b f) d c")
 
-
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
@@ -177,15 +178,17 @@ class CrossFrameAttnProcessor_backup:
         hidden_states = attn.to_out[1](hidden_states)
 
         return hidden_states
-    
+
 
 class SharedAttentionProcessor:
-    def __init__(self, 
-                 adain_keys=True, 
-                 adain_queries=True, 
-                 adain_values=False, 
-                 keys_scale=1.,
-                 attn_map_save_steps=[]):
+    def __init__(
+        self,
+        adain_keys=True,
+        adain_queries=True,
+        adain_values=False,
+        keys_scale=1.0,
+        attn_map_save_steps=[],
+    ):
         super().__init__()
         self.adain_queries = adain_queries
         self.adain_keys = adain_keys
@@ -194,16 +197,15 @@ class SharedAttentionProcessor:
         self.keys_scale = keys_scale
         self.attn_map_save_steps = attn_map_save_steps
 
-
     def __call__(
-            self,
-            attn: attention_processor.Attention,
-            hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=None,
-            **kwargs
+        self,
+        attn: attention_processor.Attention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        **kwargs,
     ):
-        
+
         if not hasattr(attn, "attn_map"):
             setattr(attn, "attn_map", {})
             setattr(attn, "inference_step", 0)
@@ -214,21 +216,31 @@ class SharedAttentionProcessor:
         input_ndim = hidden_states.ndim
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            hidden_states = hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
 
         is_cross_attention = encoder_hidden_states is not None
 
         if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            attention_mask = attn.prepare_attention_mask(
+                attention_mask, sequence_length, batch_size
+            )
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attention_mask = attention_mask.view(
+                batch_size, attn.heads, -1, attention_mask.shape[-1]
+            )
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
+                1, 2
+            )
 
         query = attn.to_q(hidden_states)
 
@@ -247,8 +259,7 @@ class SharedAttentionProcessor:
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         # if self.step >= self.start_inject:
 
-        
-        if not is_cross_attention:# and self.share_attention:
+        if not is_cross_attention:  # and self.share_attention:
             if self.adain_queries:
                 query = adain(query)
             if self.adain_keys:
@@ -258,18 +269,27 @@ class SharedAttentionProcessor:
             key = concat_first(key, -2, scale=self.keys_scale)
             value = concat_first(value, -2)
             hidden_states = nnf.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
             )
         else:
             hidden_states = nnf.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
             )
 
-
-
-        
         # hidden_states = adain(hidden_states)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.transpose(1, 2).reshape(
+            batch_size, -1, attn.heads * head_dim
+        )
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
@@ -278,7 +298,9 @@ class SharedAttentionProcessor:
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            hidden_states = hidden_states.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -288,12 +310,14 @@ class SharedAttentionProcessor:
 
 
 class SharedAttentionProcessor_v2:
-    def __init__(self, 
-                 adain_keys=True, 
-                 adain_queries=True, 
-                 adain_values=False, 
-                 keys_scale=1.,
-                 attn_map_save_steps=[]):
+    def __init__(
+        self,
+        adain_keys=True,
+        adain_queries=True,
+        adain_values=False,
+        keys_scale=1.0,
+        attn_map_save_steps=[],
+    ):
         super().__init__()
         self.adain_queries = adain_queries
         self.adain_keys = adain_keys
@@ -302,16 +326,15 @@ class SharedAttentionProcessor_v2:
         self.keys_scale = keys_scale
         self.attn_map_save_steps = attn_map_save_steps
 
-
     def __call__(
-            self,
-            attn: attention_processor.Attention,
-            hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=None,
-            **kwargs
+        self,
+        attn: attention_processor.Attention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        **kwargs,
     ):
-        
+
         if not hasattr(attn, "attn_map"):
             setattr(attn, "attn_map", {})
             setattr(attn, "inference_step", 0)
@@ -322,24 +345,33 @@ class SharedAttentionProcessor_v2:
         input_ndim = hidden_states.ndim
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            hidden_states = hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
 
         is_cross_attention = encoder_hidden_states is not None
 
         if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            attention_mask = attn.prepare_attention_mask(
+                attention_mask, sequence_length, batch_size
+            )
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attention_mask = attention_mask.view(
+                batch_size, attn.heads, -1, attention_mask.shape[-1]
+            )
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
+                1, 2
+            )
 
         query = attn.to_q(hidden_states)
-
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -352,7 +384,6 @@ class SharedAttentionProcessor_v2:
         tmp_key_shape = key.shape
         tmp_value_shape = value.shape
 
-
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
@@ -361,8 +392,7 @@ class SharedAttentionProcessor_v2:
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         # if self.step >= self.start_inject:
 
-        
-        if not is_cross_attention:# and self.share_attention:
+        if not is_cross_attention:  # and self.share_attention:
             if self.adain_queries:
                 query = adain(query)
             if self.adain_keys:
@@ -377,9 +407,13 @@ class SharedAttentionProcessor_v2:
 
             if attn.inference_step in self.attn_map_save_steps:
 
-                query = query.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                key  = key.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                value = value.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                query = query.transpose(1, 2).reshape(
+                    batch_size, -1, attn.heads * head_dim
+                )
+                key = key.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                value = value.transpose(1, 2).reshape(
+                    batch_size, -1, attn.heads * head_dim
+                )
 
                 query = attn.head_to_batch_dim(query)
                 key = attn.head_to_batch_dim(key)
@@ -388,25 +422,41 @@ class SharedAttentionProcessor_v2:
                 attention_probs = attn.get_attention_scores(query, key, attention_mask)
 
                 if attn.inference_step in self.attn_map_save_steps:
-                    attn.attn_map[attn.inference_step] = attention_probs.clone().cpu().detach()
+                    attn.attn_map[attn.inference_step] = (
+                        attention_probs.clone().cpu().detach()
+                    )
 
                 hidden_states = torch.bmm(attention_probs, value)
                 hidden_states = attn.batch_to_head_dim(hidden_states)
             else:
                 hidden_states = nnf.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                    query,
+                    key,
+                    value,
+                    attn_mask=attention_mask,
+                    dropout_p=0.0,
+                    is_causal=False,
                 )
-                    # hidden_states = adain(hidden_states)
-                hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                # hidden_states = adain(hidden_states)
+                hidden_states = hidden_states.transpose(1, 2).reshape(
+                    batch_size, -1, attn.heads * head_dim
+                )
                 hidden_states = hidden_states.to(query.dtype)
 
         else:
 
             hidden_states = nnf.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
             )
             # hidden_states = adain(hidden_states)
-            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            hidden_states = hidden_states.transpose(1, 2).reshape(
+                batch_size, -1, attn.heads * head_dim
+            )
             hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
@@ -415,7 +465,9 @@ class SharedAttentionProcessor_v2:
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            hidden_states = hidden_states.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -423,7 +475,7 @@ class SharedAttentionProcessor_v2:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         if attn.inference_step == 49:
-            #initialize inference step
+            # initialize inference step
             attn.inference_step = -1
 
         return hidden_states
@@ -440,30 +492,30 @@ def swapping_attention(key, value, chunk_size=2):
     value = rearrange(value, "b f d c -> (b f) d c")
 
     return key, value
-    
+
+
 class CrossFrameAttnProcessor:
-    def __init__(self, unet_chunk_size=2, attn_map_save_steps=[],activate_step_indices=None):
+    def __init__(
+        self, unet_chunk_size=2, attn_map_save_steps=[], activate_step_indices=None
+    ):
         self.unet_chunk_size = unet_chunk_size
         self.attn_map_save_steps = attn_map_save_steps
         self.activate_step_indices = activate_step_indices
 
     def __call__(
-            self,
-            attn,
-            hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=None):
-        
+        self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None
+    ):
+
         if not hasattr(attn, "attn_map"):
             setattr(attn, "attn_map", {})
             setattr(attn, "inference_step", 0)
         else:
             attn.inference_step += 1
-        
-        
 
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
         query = attn.to_q(hidden_states)
 
         is_cross_attention = encoder_hidden_states is not None
@@ -477,16 +529,16 @@ class CrossFrameAttnProcessor:
 
         if self.activate_step_indices is not None:
             for activate_step_index in self.activate_step_indices:
-                if attn.inference_step >= activate_step_index[0] and attn.inference_step <= activate_step_index[1]:
+                if (
+                    attn.inference_step >= activate_step_index[0]
+                    and attn.inference_step <= activate_step_index[1]
+                ):
                     is_in_inference_step = True
                     break
 
         # Swapping Attention
         if not is_cross_attention and is_in_inference_step:
             key, value = swapping_attention(key, value, self.unet_chunk_size)
-
-
-
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
@@ -511,31 +563,28 @@ class CrossFrameAttnProcessor:
         return hidden_states
 
 
-
-
 class CrossFrameAttnProcessor4Inversion:
-    def __init__(self, unet_chunk_size=2, attn_map_save_steps=[],activate_step_indices=None):
+    def __init__(
+        self, unet_chunk_size=2, attn_map_save_steps=[], activate_step_indices=None
+    ):
         self.unet_chunk_size = unet_chunk_size
         self.attn_map_save_steps = attn_map_save_steps
         self.activate_step_indices = activate_step_indices
 
     def __call__(
-            self,
-            attn,
-            hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=None):
-        
+        self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None
+    ):
+
         if not hasattr(attn, "attn_map"):
             setattr(attn, "attn_map", {})
             setattr(attn, "inference_step", 0)
         else:
             attn.inference_step += 1
-        
-        
 
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
         query = attn.to_q(hidden_states)
 
         is_cross_attention = encoder_hidden_states is not None
@@ -550,7 +599,10 @@ class CrossFrameAttnProcessor4Inversion:
 
         if self.activate_step_indices is not None:
             for activate_step_index in self.activate_step_indices:
-                if attn.inference_step >= activate_step_index[0] and attn.inference_step <= activate_step_index[1]:
+                if (
+                    attn.inference_step >= activate_step_index[0]
+                    and attn.inference_step <= activate_step_index[1]
+                ):
                     is_in_inference_step = True
                     break
 
@@ -558,14 +610,12 @@ class CrossFrameAttnProcessor4Inversion:
         if not is_cross_attention and is_in_inference_step:
             key, value = swapping_attention(key, value, self.unet_chunk_size)
 
-
-
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        
+
         # if attn.inference_step > 45 and attn.inference_step < 50:
         # if attn.inference_step == 42 or attn.inference_step==49:
         if attn.inference_step in self.attn_map_save_steps:
@@ -580,11 +630,10 @@ class CrossFrameAttnProcessor4Inversion:
         hidden_states = attn.to_out[1](hidden_states)
 
         if attn.inference_step == 49:
-            #initialize inference step
+            # initialize inference step
             attn.inference_step = -1
 
         return hidden_states
-
 
 
 class CrossFrameAttnProcessor_store:
@@ -593,14 +642,13 @@ class CrossFrameAttnProcessor_store:
         self.attn_map_save_steps = attn_map_save_steps
 
     def __call__(
-            self,
-            attn,
-            hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=None):
-        
+        self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None
+    ):
+
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
         query = attn.to_q(hidden_states)
 
         is_cross_attention = encoder_hidden_states is not None
@@ -615,7 +663,6 @@ class CrossFrameAttnProcessor_store:
         if not is_cross_attention:
             key, value = swapping_attention(key, value, self.unet_chunk_size)
 
-
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
@@ -627,8 +674,7 @@ class CrossFrameAttnProcessor_store:
             setattr(attn, "inference_step", 0)
         else:
             attn.inference_step += 1
-        
-        
+
         # if attn.inference_step > 45 and attn.inference_step < 50:
         # if attn.inference_step == 42 or attn.inference_step==49:
         if attn.inference_step in self.attn_map_save_steps:
@@ -644,20 +690,19 @@ class CrossFrameAttnProcessor_store:
 
         return hidden_states
 
-    
+
 class InvertedVEAttnProcessor:
     def __init__(self, unet_chunk_size=2, scale=1.0):
         self.unet_chunk_size = unet_chunk_size
         self.scale = scale
 
     def __call__(
-            self,
-            attn,
-            hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=None):
+        self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None
+    ):
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
         query = attn.to_q(hidden_states)
 
         is_cross_attention = encoder_hidden_states is not None
@@ -668,7 +713,7 @@ class InvertedVEAttnProcessor:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        #Dual Attention
+        # Dual Attention
         if not is_cross_attention:
             ve_key = key.clone()
             ve_value = value.clone()
@@ -686,11 +731,13 @@ class InvertedVEAttnProcessor:
             ve_value = attn.head_to_batch_dim(ve_value)
             ve_query = attn.head_to_batch_dim(query)
 
-            ve_attention_probs = attn.get_attention_scores(ve_query, ve_key, attention_mask)
+            ve_attention_probs = attn.get_attention_scores(
+                ve_query, ve_key, attention_mask
+            )
             ve_hidden_states = torch.bmm(ve_attention_probs, ve_value)
             ve_hidden_states = attn.batch_to_head_dim(ve_hidden_states)
-            ve_hidden_states[0,...] = 0
-            ve_hidden_states[video_length,...] = 0
+            ve_hidden_states[0, ...] = 0
+            ve_hidden_states[video_length, ...] = 0
 
             query = attn.head_to_batch_dim(query)
             key = attn.head_to_batch_dim(key)
@@ -711,8 +758,6 @@ class InvertedVEAttnProcessor:
             hidden_states = torch.bmm(attention_probs, value)
             hidden_states = attn.batch_to_head_dim(hidden_states)
 
-        
-
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
@@ -720,10 +765,12 @@ class InvertedVEAttnProcessor:
 
         return hidden_states
 
+
 class AttnProcessor(nn.Module):
     r"""
     Default processor for performing attention-related computations.
     """
+
     def __init__(
         self,
         hidden_size=None,
@@ -749,12 +796,18 @@ class AttnProcessor(nn.Module):
 
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            hidden_states = hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
 
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
 
         # if attn.group_norm is not None:
         #     hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
@@ -764,7 +817,9 @@ class AttnProcessor(nn.Module):
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            encoder_hidden_states = attn.norm_encoder_hidden_states(
+                encoder_hidden_states
+            )
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -783,7 +838,9 @@ class AttnProcessor(nn.Module):
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            hidden_states = hidden_states.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -791,7 +848,7 @@ class AttnProcessor(nn.Module):
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
-    
+
 
 @dataclass
 class StableDiffusionPipelineOutput(BaseOutput):
@@ -810,6 +867,7 @@ class StableDiffusionPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
 
+
 class FrozenDict(OrderedDict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -820,25 +878,37 @@ class FrozenDict(OrderedDict):
         self.__frozen = True
 
     def __delitem__(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance."
+        )
 
     def setdefault(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``setdefault`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``setdefault`` on a {self.__class__.__name__} instance."
+        )
 
     def pop(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``pop`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``pop`` on a {self.__class__.__name__} instance."
+        )
 
     def update(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``update`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``update`` on a {self.__class__.__name__} instance."
+        )
 
     def __setattr__(self, name, value):
         if hasattr(self, "__frozen") and self.__frozen:
-            raise Exception(f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance.")
+            raise Exception(
+                f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance."
+            )
         super().__setattr__(name, value)
 
     def __setitem__(self, name, value):
         if hasattr(self, "__frozen") and self.__frozen:
-            raise Exception(f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance.")
+            raise Exception(
+                f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance."
+            )
         super().__setitem__(name, value)
 
 
@@ -869,6 +939,7 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
@@ -883,10 +954,21 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         requires_safety_checker: bool = True,
     ):
         # super().__init__()
-        super().__init__(vae, text_encoder, tokenizer, unet, scheduler,
-                         safety_checker, feature_extractor, requires_safety_checker)
+        super().__init__(
+            vae,
+            text_encoder,
+            tokenizer,
+            unet,
+            scheduler,
+            safety_checker,
+            feature_extractor,
+            requires_safety_checker,
+        )
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if (
+            hasattr(scheduler.config, "steps_offset")
+            and scheduler.config.steps_offset != 1
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -895,12 +977,17 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        if (
+            hasattr(scheduler.config, "clip_sample")
+            and scheduler.config.clip_sample is True
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -908,7 +995,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "clip_sample not set", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
@@ -929,10 +1018,16 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(
+            unet.config, "_diffusers_version"
+        ) and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        ) < version.parse(
+            "0.9.0.dev0"
+        )
+        is_unet_sample_size_less_64 = (
+            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -945,7 +1040,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -1005,7 +1102,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+            raise ImportError(
+                "`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher"
+            )
 
         device = torch.device(f"cuda:{gpu_id}")
 
@@ -1017,7 +1116,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
             cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
+            cpu_offload(
+                self.safety_checker, execution_device=device, offload_buffers=True
+            )
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -1029,7 +1130,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError(
+                "`enable_model_offload` requires `accelerate v0.17.0` or higher."
+            )
 
         device = torch.device(f"cuda:{gpu_id}")
 
@@ -1039,10 +1142,14 @@ class InvertedVEPipeline(StableDiffusionPipeline):
 
         hook = None
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+            _, hook = cpu_offload_with_hook(
+                cpu_offloaded_model, device, prev_module_hook=hook
+            )
 
         if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
+            _, hook = cpu_offload_with_hook(
+                self.safety_checker, device, prev_module_hook=hook
+            )
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
@@ -1065,10 +1172,11 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(
+                self.numpy_to_pil(image), return_tensors="pt"
+            ).to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -1090,13 +1198,17 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -1112,10 +1224,13 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
         if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None
+            and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -1131,8 +1246,12 @@ class InvertedVEPipeline(StableDiffusionPipeline):
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt is not None and (
+            not isinstance(prompt, str) and not isinstance(prompt, list)
+        ):
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -1148,8 +1267,23 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1157,7 +1291,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(
+                shape, generator=generator, device=device, dtype=dtype
+            )
         else:
             latents = latents.to(device)
 
@@ -1264,7 +1400,13 @@ class InvertedVEPipeline(StableDiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
@@ -1284,7 +1426,6 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         # 3. Encode input prompt
         # import pdb; pdb.set_trace()
 
-        
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -1307,8 +1448,12 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                 prompt_embeds=None,
                 negative_prompt_embeds=negative_prompt_embeds,
             )
-            prompt_embeds[num_images_per_prompt+1: ] = target_prompt_embeds[num_images_per_prompt+1:]
-        import pdb; pdb.set_trace()
+            prompt_embeds[num_images_per_prompt + 1 :] = target_prompt_embeds[
+                num_images_per_prompt + 1 :
+            ]
+        import pdb
+
+        pdb.set_trace()
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -1335,8 +1480,12 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = (
+                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                )
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -1349,13 +1498,19 @@ class InvertedVEPipeline(StableDiffusionPipeline):
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs
+                ).prev_sample
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
@@ -1368,7 +1523,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image, has_nsfw_concept = self.run_safety_checker(
+                image, device, prompt_embeds.dtype
+            )
 
             # 10. Convert to PIL
             image = self.numpy_to_pil(image)
@@ -1377,7 +1534,9 @@ class InvertedVEPipeline(StableDiffusionPipeline):
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image, has_nsfw_concept = self.run_safety_checker(
+                image, device, prompt_embeds.dtype
+            )
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -1386,229 +1545,226 @@ class InvertedVEPipeline(StableDiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(
+            images=image, nsfw_content_detected=has_nsfw_concept
+        )
 
 
-ACTIVATE_LAYER_CANDIDATE= [
-        'down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor', 
-        'down_blocks.1.attentions.0.transformer_blocks.0.attn2.processor', 
-        'down_blocks.1.attentions.0.transformer_blocks.1.attn1.processor', 
-        'down_blocks.1.attentions.0.transformer_blocks.1.attn2.processor',
-        'down_blocks.1.attentions.1.transformer_blocks.0.attn1.processor', 
-        'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor', 
-        'down_blocks.1.attentions.1.transformer_blocks.1.attn1.processor', 
-        'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor', #8
-
-        'down_blocks.2.attentions.0.transformer_blocks.0.attn1.processor',
-        'down_blocks.2.attentions.0.transformer_blocks.0.attn2.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.1.attn1.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.1.attn2.processor',
-        'down_blocks.2.attentions.0.transformer_blocks.2.attn1.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.2.attn2.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.3.attn1.processor',
-        'down_blocks.2.attentions.0.transformer_blocks.3.attn2.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.4.attn1.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.4.attn2.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.5.attn1.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.5.attn2.processor',
-        'down_blocks.2.attentions.0.transformer_blocks.6.attn1.processor',
-        'down_blocks.2.attentions.0.transformer_blocks.6.attn2.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.7.attn1.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.7.attn2.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.8.attn1.processor', 
-        'down_blocks.2.attentions.0.transformer_blocks.8.attn2.processor',
-        'down_blocks.2.attentions.0.transformer_blocks.9.attn1.processor',
-        'down_blocks.2.attentions.0.transformer_blocks.9.attn2.processor', #20
-
-        'down_blocks.2.attentions.1.transformer_blocks.0.attn1.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.0.attn2.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.1.attn1.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.1.attn2.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.2.attn1.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.2.attn2.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.3.attn1.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.3.attn2.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.4.attn1.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.4.attn2.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.5.attn1.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.5.attn2.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.6.attn1.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.6.attn2.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.7.attn1.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.7.attn2.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.8.attn1.processor', 
-        'down_blocks.2.attentions.1.transformer_blocks.8.attn2.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.9.attn1.processor',
-        'down_blocks.2.attentions.1.transformer_blocks.9.attn2.processor',#20
-
-        'mid_block.attentions.0.transformer_blocks.0.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.0.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.1.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.1.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.2.attn1.processor',
-        'mid_block.attentions.0.transformer_blocks.2.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.3.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.3.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.4.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.4.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.5.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.5.attn2.processor',
-        'mid_block.attentions.0.transformer_blocks.6.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.6.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.7.attn1.processor',
-        'mid_block.attentions.0.transformer_blocks.7.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.8.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.8.attn2.processor', 
-        'mid_block.attentions.0.transformer_blocks.9.attn1.processor', 
-        'mid_block.attentions.0.transformer_blocks.9.attn2.processor', #20
-
-        'up_blocks.0.attentions.0.transformer_blocks.0.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.0.attn2.processor',
-        'up_blocks.0.attentions.0.transformer_blocks.1.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.1.attn2.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.2.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.2.attn2.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.3.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.3.attn2.processor',
-        'up_blocks.0.attentions.0.transformer_blocks.4.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.4.attn2.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.5.attn1.processor',
-        'up_blocks.0.attentions.0.transformer_blocks.5.attn2.processor',
-        'up_blocks.0.attentions.0.transformer_blocks.6.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.6.attn2.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.7.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.7.attn2.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.8.attn1.processor',
-        'up_blocks.0.attentions.0.transformer_blocks.8.attn2.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.9.attn1.processor', 
-        'up_blocks.0.attentions.0.transformer_blocks.9.attn2.processor',#20
-
-        'up_blocks.0.attentions.1.transformer_blocks.0.attn1.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.0.attn2.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.1.attn1.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.1.attn2.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.2.attn1.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.2.attn2.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.3.attn1.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.3.attn2.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.4.attn1.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.4.attn2.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.5.attn1.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.5.attn2.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.6.attn1.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.6.attn2.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.7.attn1.processor', 
-        'up_blocks.0.attentions.1.transformer_blocks.7.attn2.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.8.attn1.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.8.attn2.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.9.attn1.processor',
-        'up_blocks.0.attentions.1.transformer_blocks.9.attn2.processor',#20
-
-        'up_blocks.0.attentions.2.transformer_blocks.0.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.0.attn2.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.1.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.1.attn2.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.2.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.2.attn2.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.3.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.3.attn2.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.4.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.4.attn2.processor',
-        'up_blocks.0.attentions.2.transformer_blocks.5.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.5.attn2.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.6.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.6.attn2.processor',
-        'up_blocks.0.attentions.2.transformer_blocks.7.attn1.processor',
-        'up_blocks.0.attentions.2.transformer_blocks.7.attn2.processor',
-        'up_blocks.0.attentions.2.transformer_blocks.8.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.8.attn2.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.9.attn1.processor', 
-        'up_blocks.0.attentions.2.transformer_blocks.9.attn2.processor', #20
-
-        'up_blocks.1.attentions.0.transformer_blocks.0.attn1.processor', 
-        'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor',
-        'up_blocks.1.attentions.0.transformer_blocks.1.attn1.processor',
-        'up_blocks.1.attentions.0.transformer_blocks.1.attn2.processor',
-        'up_blocks.1.attentions.1.transformer_blocks.0.attn1.processor', 
-        'up_blocks.1.attentions.1.transformer_blocks.0.attn2.processor', 
-        'up_blocks.1.attentions.1.transformer_blocks.1.attn1.processor', 
-        'up_blocks.1.attentions.1.transformer_blocks.1.attn2.processor',
-        'up_blocks.1.attentions.2.transformer_blocks.0.attn1.processor',
-        'up_blocks.1.attentions.2.transformer_blocks.0.attn2.processor', 
-        'up_blocks.1.attentions.2.transformer_blocks.1.attn1.processor', 
-        'up_blocks.1.attentions.2.transformer_blocks.1.attn2.processor',#12
-
+ACTIVATE_LAYER_CANDIDATE = [
+    "down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor",
+    "down_blocks.1.attentions.0.transformer_blocks.0.attn2.processor",
+    "down_blocks.1.attentions.0.transformer_blocks.1.attn1.processor",
+    "down_blocks.1.attentions.0.transformer_blocks.1.attn2.processor",
+    "down_blocks.1.attentions.1.transformer_blocks.0.attn1.processor",
+    "down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor",
+    "down_blocks.1.attentions.1.transformer_blocks.1.attn1.processor",
+    "down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor",  # 8
+    "down_blocks.2.attentions.0.transformer_blocks.0.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.0.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.1.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.1.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.2.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.2.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.3.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.3.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.4.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.4.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.5.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.5.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.6.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.6.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.7.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.7.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.8.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.8.attn2.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.9.attn1.processor",
+    "down_blocks.2.attentions.0.transformer_blocks.9.attn2.processor",  # 20
+    "down_blocks.2.attentions.1.transformer_blocks.0.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.0.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.1.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.1.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.2.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.2.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.3.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.3.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.4.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.4.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.5.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.5.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.6.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.6.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.7.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.7.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.8.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.8.attn2.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.9.attn1.processor",
+    "down_blocks.2.attentions.1.transformer_blocks.9.attn2.processor",  # 20
+    "mid_block.attentions.0.transformer_blocks.0.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.0.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.1.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.1.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.2.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.2.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.3.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.3.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.4.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.4.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.5.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.5.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.6.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.6.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.7.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.7.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.8.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.8.attn2.processor",
+    "mid_block.attentions.0.transformer_blocks.9.attn1.processor",
+    "mid_block.attentions.0.transformer_blocks.9.attn2.processor",  # 20
+    "up_blocks.0.attentions.0.transformer_blocks.0.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.0.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.1.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.1.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.2.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.2.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.3.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.3.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.4.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.4.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.5.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.5.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.6.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.6.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.7.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.7.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.8.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.8.attn2.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.9.attn1.processor",
+    "up_blocks.0.attentions.0.transformer_blocks.9.attn2.processor",  # 20
+    "up_blocks.0.attentions.1.transformer_blocks.0.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.0.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.1.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.1.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.2.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.2.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.3.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.3.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.4.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.4.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.5.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.5.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.6.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.6.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.7.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.7.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.8.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.8.attn2.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.9.attn1.processor",
+    "up_blocks.0.attentions.1.transformer_blocks.9.attn2.processor",  # 20
+    "up_blocks.0.attentions.2.transformer_blocks.0.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.0.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.1.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.1.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.2.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.2.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.3.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.3.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.4.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.4.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.5.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.5.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.6.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.6.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.7.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.7.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.8.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.8.attn2.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.9.attn1.processor",
+    "up_blocks.0.attentions.2.transformer_blocks.9.attn2.processor",  # 20
+    "up_blocks.1.attentions.0.transformer_blocks.0.attn1.processor",
+    "up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor",
+    "up_blocks.1.attentions.0.transformer_blocks.1.attn1.processor",
+    "up_blocks.1.attentions.0.transformer_blocks.1.attn2.processor",
+    "up_blocks.1.attentions.1.transformer_blocks.0.attn1.processor",
+    "up_blocks.1.attentions.1.transformer_blocks.0.attn2.processor",
+    "up_blocks.1.attentions.1.transformer_blocks.1.attn1.processor",
+    "up_blocks.1.attentions.1.transformer_blocks.1.attn2.processor",
+    "up_blocks.1.attentions.2.transformer_blocks.0.attn1.processor",
+    "up_blocks.1.attentions.2.transformer_blocks.0.attn2.processor",
+    "up_blocks.1.attentions.2.transformer_blocks.1.attn1.processor",
+    "up_blocks.1.attentions.2.transformer_blocks.1.attn2.processor",  # 12
 ]
 
 STYLE_DESCRIPTION_DICT = {
-    "chinese-ink-paint":("{object} in colorful chinese ink paintings style",""),
-    "cloud":("Photography of {object}, realistic",""),
-    "digital-art":("{object} in digital glitch arts style",""),
-    "fire":("{object} photography, realistic, black background'",""),
-    "klimt":("{object} in style of Gustav Klimt",""),
-    "line-art":("line art drawing of {object} . professional, sleek, modern, minimalist, graphic, line art, vector graphics",""),
-    "low-poly":("low-poly style of {object} . low-poly game art, polygon mesh, jagged, blocky, wireframe edges, centered composition",
-                            "noisy, sloppy, messy, grainy, highly detailed, ultra textured, photo"),
-    "munch":("{object} in Edvard Munch style",""),
-    "van-gogh":("{object}, Van Gogh",""),
-    "totoro":("{object}, art by studio ghibli, cinematic, masterpiece,key visual, studio anime, highly detailed",
-              "photo, deformed, black and white, realism, disfigured, low contrast"),
-    
-    "realistic":            ("A portrait of {object}, photorealistic, 35mm film, realistic",
-                             "gray, ugly, deformed, noisy, blurry"),
-                             
-    "line_art":             ("line art drawing of {object} . professional, sleek, modern, minimalist, graphic, line art, vector graphics",
-                            "anime, photorealistic, 35mm film, deformed, glitch, blurry, noisy, off-center, deformed, cross-eyed, closed eyes, bad anatomy, ugly, disfigured, mutated, realism, realistic, impressionism, expressionism, oil, acrylic"
-                            ) ,
-
-    "anime":                ("anime artwork of {object} . anime style, key visual, vibrant, studio anime, highly detailed",
-                            "photo, deformed, black and white, realism, disfigured, low contrast"
-                            ),
-    
-    "Artstyle_Pop_Art" :    ("pop Art style of {object} . bright colors, bold outlines, popular culture themes, ironic or kitsch",
-                            "ugly, deformed, noisy, blurry, low contrast, realism, photorealistic, minimalist"
-                            ),
-    
-    "Artstyle_Pointillism": ("pointillism style of {object} . composed entirely of small, distinct dots of color, vibrant, highly detailed",
-                              "line drawing, smooth shading, large color fields, simplistic"
-                              ),
-    
-    "origami":              ("origami style of {object} . paper art, pleated paper, folded, origami art, pleats, cut and fold, centered composition",
-                             "noisy, sloppy, messy, grainy, highly detailed, ultra textured, photo"
-                             ),
-    
-    "craft_clay":           ("play-doh style of {object} . sculpture, clay art, centered composition, Claymation",
-                            "sloppy, messy, grainy, highly detailed, ultra textured, photo"
-                            ),
-    
-    "low_poly" :            ("low-poly style of {object} . low-poly game art, polygon mesh, jagged, blocky, wireframe edges, centered composition",
-                            "noisy, sloppy, messy, grainy, highly detailed, ultra textured, photo"
-                            ),      
-    
-    "Artstyle_watercolor":  ("watercolor painting of {object} . vibrant, beautiful, painterly, detailed, textural, artistic",
-                            "anime, photorealistic, 35mm film, deformed, glitch, low contrast, noisy"
-                            ),
-    
-    "Papercraft_Collage" : ("collage style of {object} . mixed media, layered, textural, detailed, artistic",
-                            "ugly, deformed, noisy, blurry, low contrast, realism, photorealistic"
-                            ),
-    
-    "Artstyle_Impressionist" : ("impressionist painting of {object} . loose brushwork, vibrant color, light and shadow play, captures feeling over form",
-                                "anime, photorealistic, 35mm film, deformed, glitch, low contrast, noisy"
-                            ),
-    "realistic_bg_black":("{object} photography, realistic, black background",
-                          ""),
-    "photography_realistic":("Photography of {object}, realistic",
-                             ""),
-    "digital_art":("{object} in digital glitch arts style.",
-                    ""
-                    ),
-    "chinese_painting":("{object} in traditional a chinese ink painting style.",
-                        ""
-                        ),
-    "no_style":("{object}",
-    ""),
-    "kid_drawing":("{object} in kid crayon drawings style.",""),
-    "onepiece":("{object}, wanostyle, angry looking, straw hat, looking at viewer, solo, upper body, masterpiece, best quality, (extremely detailed), watercolor, illustration, depth of field, sketch, dark intense shadows, sharp focus, soft lighting, hdr, colorful, good composition, fire all around, spectacular, closed shirt",
-                " watermark, text, error, blurry, jpeg artifacts, many objects, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature")
+    "chinese-ink-paint": ("{object} in colorful chinese ink paintings style", ""),
+    "cloud": ("Photography of {object}, realistic", ""),
+    "digital-art": ("{object} in digital glitch arts style", ""),
+    "fire": ("{object} photography, realistic, black background'", ""),
+    "klimt": ("{object} in style of Gustav Klimt", ""),
+    "line-art": (
+        "line art drawing of {object} . professional, sleek, modern, minimalist, graphic, line art, vector graphics",
+        "",
+    ),
+    "low-poly": (
+        "low-poly style of {object} . low-poly game art, polygon mesh, jagged, blocky, wireframe edges, centered composition",
+        "noisy, sloppy, messy, grainy, highly detailed, ultra textured, photo",
+    ),
+    "munch": ("{object} in Edvard Munch style", ""),
+    "van-gogh": ("{object}, Van Gogh", ""),
+    "totoro": (
+        "{object}, art by studio ghibli, cinematic, masterpiece,key visual, studio anime, highly detailed",
+        "photo, deformed, black and white, realism, disfigured, low contrast",
+    ),
+    "realistic": (
+        "A portrait of {object}, photorealistic, 35mm film, realistic",
+        "gray, ugly, deformed, noisy, blurry",
+    ),
+    "line_art": (
+        "line art drawing of {object} . professional, sleek, modern, minimalist, graphic, line art, vector graphics",
+        "anime, photorealistic, 35mm film, deformed, glitch, blurry, noisy, off-center, deformed, cross-eyed, closed eyes, bad anatomy, ugly, disfigured, mutated, realism, realistic, impressionism, expressionism, oil, acrylic",
+    ),
+    "anime": (
+        "anime artwork of {object} . anime style, key visual, vibrant, studio anime, highly detailed",
+        "photo, deformed, black and white, realism, disfigured, low contrast",
+    ),
+    "Artstyle_Pop_Art": (
+        "pop Art style of {object} . bright colors, bold outlines, popular culture themes, ironic or kitsch",
+        "ugly, deformed, noisy, blurry, low contrast, realism, photorealistic, minimalist",
+    ),
+    "Artstyle_Pointillism": (
+        "pointillism style of {object} . composed entirely of small, distinct dots of color, vibrant, highly detailed",
+        "line drawing, smooth shading, large color fields, simplistic",
+    ),
+    "origami": (
+        "origami style of {object} . paper art, pleated paper, folded, origami art, pleats, cut and fold, centered composition",
+        "noisy, sloppy, messy, grainy, highly detailed, ultra textured, photo",
+    ),
+    "craft_clay": (
+        "play-doh style of {object} . sculpture, clay art, centered composition, Claymation",
+        "sloppy, messy, grainy, highly detailed, ultra textured, photo",
+    ),
+    "low_poly": (
+        "low-poly style of {object} . low-poly game art, polygon mesh, jagged, blocky, wireframe edges, centered composition",
+        "noisy, sloppy, messy, grainy, highly detailed, ultra textured, photo",
+    ),
+    "Artstyle_watercolor": (
+        "watercolor painting of {object} . vibrant, beautiful, painterly, detailed, textural, artistic",
+        "anime, photorealistic, 35mm film, deformed, glitch, low contrast, noisy",
+    ),
+    "Papercraft_Collage": (
+        "collage style of {object} . mixed media, layered, textural, detailed, artistic",
+        "ugly, deformed, noisy, blurry, low contrast, realism, photorealistic",
+    ),
+    "Artstyle_Impressionist": (
+        "impressionist painting of {object} . loose brushwork, vibrant color, light and shadow play, captures feeling over form",
+        "anime, photorealistic, 35mm film, deformed, glitch, low contrast, noisy",
+    ),
+    "realistic_bg_black": ("{object} photography, realistic, black background", ""),
+    "photography_realistic": ("Photography of {object}, realistic", ""),
+    "digital_art": ("{object} in digital glitch arts style.", ""),
+    "chinese_painting": ("{object} in traditional a chinese ink painting style.", ""),
+    "no_style": ("{object}", ""),
+    "kid_drawing": ("{object} in kid crayon drawings style.", ""),
+    "onepiece": (
+        "{object}, wanostyle, angry looking, straw hat, looking at viewer, solo, upper body, masterpiece, best quality, (extremely detailed), watercolor, illustration, depth of field, sketch, dark intense shadows, sharp focus, soft lighting, hdr, colorful, good composition, fire all around, spectacular, closed shirt",
+        " watermark, text, error, blurry, jpeg artifacts, many objects, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature",
+    ),
 }

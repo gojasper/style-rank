@@ -7,8 +7,8 @@ from PIL import Image
 from pydantic import ValidationError
 from torchvision.transforms.functional import pil_to_tensor
 
-from stylebench.embedders import Dinov2ImageEmbedderWithProjectionConfig
-from stylebench.metrics import Dinov2Metric, Dinov2MetricConfig
+from stylerank.embedders import Dinov2ImageEmbedderWithProjectionConfig
+from stylerank.metrics import Dinov2Metric, Dinov2MetricConfig
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

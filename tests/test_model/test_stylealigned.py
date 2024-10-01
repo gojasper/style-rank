@@ -6,11 +6,10 @@ import pytest
 import torch
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
-from tqdm import tqdm
 
-from stylebench.embedders import ClipImageEmbedderConfig
-from stylebench.metrics import ClipMetric, ClipMetricConfig
-from stylebench.models.stylealigned import StyleAlignedConfig, StyleAlignedModel
+from stylerank.embedders import ClipImageEmbedderConfig
+from stylerank.metrics import ClipMetric, ClipMetricConfig
+from stylerank.models.stylealigned import StyleAlignedConfig, StyleAlignedModel
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 PATH = os.path.dirname(os.path.abspath(__file__))

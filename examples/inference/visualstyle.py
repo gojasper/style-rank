@@ -6,14 +6,13 @@ from typing import List, Optional
 import fire
 import numpy as np
 import pillow_avif
-import torch
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
 from tqdm import tqdm
 
-from stylebench.data.datasets import DataModule, DataModuleConfig
-from stylebench.data.filters import KeyFilter, KeyFilterConfig
-from stylebench.data.mappers import (
+from stylerank.data.datasets import DataModule, DataModuleConfig
+from stylerank.data.filters import KeyFilter, KeyFilterConfig
+from stylerank.data.mappers import (
     KeyRenameMapper,
     KeyRenameMapperConfig,
     MapperWrapper,
@@ -22,7 +21,7 @@ from stylebench.data.mappers import (
     TorchvisionMapper,
     TorchvisionMapperConfig,
 )
-from stylebench.models.visualstyle import VisualStyleConfig, VisualStyleModel
+from stylerank.models.visualstyle import VisualStyleConfig, VisualStyleModel
 
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))
@@ -84,7 +83,7 @@ def main(
 ):
 
     if input_path is None:
-        input_path = os.path.join(PARENT_PATH, "data/stylebench_papers.tar")
+        input_path = os.path.join(PARENT_PATH, "data/stylerank_papers.tar")
     if output_path is None:
         output_path = os.path.join(PARENT_PATH, "output/inference/visualstyle")
     if json_path is None:

@@ -3,8 +3,8 @@ import torch
 from pydantic import ValidationError
 from torchmetrics.multimodal.clip_score import CLIPScore
 
-from stylebench.embedders import ClipEmbedderConfig, ClipImageEmbedderConfig
-from stylebench.metrics import ClipMetric, ClipMetricConfig
+from stylerank.embedders import ClipEmbedderConfig, ClipImageEmbedderConfig
+from stylerank.metrics import ClipMetric, ClipMetricConfig
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

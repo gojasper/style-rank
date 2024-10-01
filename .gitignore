@@ -25,11 +25,10 @@ venv.bak/
 
 # cache
 __pycache__
-src/stylebench.egg-info
+src/stylerank.egg-info
 build
 *.DS_Store
 doc/build
-src/stylebench.egg-info
 
 # output
 output/*
@@ -38,3 +37,4 @@ output/*
 # data
 data/*
 !data/prompts.json
+!data/grid.png

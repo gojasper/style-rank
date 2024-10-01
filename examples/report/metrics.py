@@ -12,12 +12,12 @@ from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
 from tqdm import tqdm
 
-from stylebench.embedders import (
+from stylerank.embedders import (
     ClipEmbedderConfig,
     ClipImageEmbedderConfig,
     Dinov2ImageEmbedderWithProjectionConfig,
 )
-from stylebench.metrics import (
+from stylerank.metrics import (
     ClipMetric,
     ClipMetricConfig,
     Dinov2Metric,

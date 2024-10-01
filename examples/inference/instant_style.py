@@ -10,9 +10,9 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from stylebench.data.datasets import DataModule, DataModuleConfig
-from stylebench.data.filters import KeyFilter, KeyFilterConfig
-from stylebench.data.mappers import (
+from stylerank.data.datasets import DataModule, DataModuleConfig
+from stylerank.data.filters import KeyFilter, KeyFilterConfig
+from stylerank.data.mappers import (
     KeyRenameMapper,
     KeyRenameMapperConfig,
     MapperWrapper,
@@ -21,7 +21,7 @@ from stylebench.data.mappers import (
     TorchvisionMapper,
     TorchvisionMapperConfig,
 )
-from stylebench.models.ip_adapters import IPAdapterConfig, IPAdapterModel
+from stylerank.models.ip_adapters import IPAdapterConfig, IPAdapterModel
 
 # ENV VARIABLES
 PATH = os.path.dirname(os.path.abspath(__file__))
@@ -91,7 +91,7 @@ def main(
 ):
 
     if input_path is None:
-        input_path = os.path.join(PARENT_PATH, "data/stylebench_papers.tar")
+        input_path = os.path.join(PARENT_PATH, "data/stylerank_papers.tar")
     if output_path is None:
         output_path = os.path.join(PARENT_PATH, "output/inference/instant_style")
     if json_path is None:
@@ -107,7 +107,7 @@ def main(
     model.to("cuda")
 
     empty_prompt = prompts is None
-    
+
     for batch in tqdm(dataloader):
 
         # Get images and data
