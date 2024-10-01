@@ -1,11 +1,20 @@
 # Style Rank
 
 <p align="center">
-  <a href='https://www.python.org/downloads/release/python-31015/'>
-    <img src="https://img.shields.io/badge/python-3.10+-purple" />
+  <a href="https://gojasper.github.io/style-rank-project/">
+	    <img src='https://img.shields.io/badge/Project-StyleRank-blue' />
 	</a>
   <a href="https://huggingface.co/datasets/jasperai/style-rank">
 	    <img src='https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-StyleRank-yellow' />
+	</a>
+  <a href="https://huggingface.co/spaces/jasperai/inversion-instantstyle">
+	    <img src='https://img.shields.io/badge/%F0%9F%A4%97%20Demo-InversionInstantStyle-orange' />
+	</a>
+    <a href='https://creativecommons.org/licenses/by-nd/4.0/legalcode'>
+	    <img src="https://img.shields.io/badge/Licence-CC.BY.NC-purple" />
+	</a>
+  <a href='https://www.python.org/downloads/release/python-31015/'>
+    <img src="https://img.shields.io/badge/Python-3.10+-purple" />
 	</a>
   <a href="https://github.com/psf/black">
     <img src='https://img.shields.io/badge/Code_style-black-black' />
@@ -13,7 +22,10 @@
 </p>
 
 
-Style Rank, a unified benchmarking framework for generative styling models in PyTorch. This repository contains code wrapping the implementation of several papers in the field of generative styling models and implementation of metrics to evaluate the quality of the generated images. We also provide one evaluation dataset for comparison of the models.
+Style Rank, a unified benchmarking framework for generative styling models in PyTorch. This repository contains code wrapping the implementation of several papers in the field of generative styling models and implementation of metrics to evaluate the quality of the generated images. We also provide [StyleRank](https://huggingface.co/datasets/jasperai/style-rank), an evaluation dataset for comparison of the models.
+
+This work was developed by Eyal Benaroche, Clément Chadebec, Onur Tasar, and Benjamin Aubin from [Jasper Research](https://www.jasper.ai) in the context of Eyal's internship with [Ecole Polytechnique](https://www.polytechnique.edu/).
+
 
 <img src="./data/grid.png" alt="Grid"/>
 
@@ -217,3 +229,6 @@ pip install pytest
 ```bash
 pytest tests/
 ```
+
+# License
+This code is released under the [Creative Commons BY-NC 4.0 license](https://creativecommons.org/licenses/by-nc/4.0/legalcode.en).
