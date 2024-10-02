@@ -1,4 +1,4 @@
-# Style Rank
+# Style-Rank
 
 <p align="center">
   <a href="https://gojasper.github.io/style-rank-project/">
@@ -22,9 +22,9 @@
 </p>
 
 
-Style Rank, a unified benchmarking framework for generative styling models in PyTorch. This repository contains code wrapping the implementation of several papers in the field of generative styling models and implementation of metrics to evaluate the quality of the generated images. We also provide [StyleRank](https://huggingface.co/datasets/jasperai/style-rank), an evaluation dataset for comparison of the models.
+Style Rank, a unified benchmarking framework for generative styling models in PyTorch. This repository contains code wrapping the implementations of several papers in the field of generative styling models and implementation of metrics to evaluate the quality of the generated images. We also provide [Style-Rank](https://huggingface.co/datasets/jasperai/style-rank), an evaluation dataset for comparison of the models.
 
-This work was developed by Eyal Benaroche, Clément Chadebec, Onur Tasar, and Benjamin Aubin from [Jasper Research](https://www.jasper.ai) in the context of Eyal's internship with [Ecole Polytechnique](https://www.polytechnique.edu/).
+This work was developed by Eyal Benaroche, Clément Chadebec, Onur Tasar, and Benjamin Aubin from [Jasper Research](https://www.jasper.ai) and [Ecole Polytechnique](https://www.polytechnique.edu/).
 
 
 <img src="./data/grid.png" alt="Grid"/>
@@ -104,12 +104,30 @@ wget -O data/stylerank_papers.tar "https://huggingface.co/datasets/jasperai/styl
 Or you can also stream it from HuggingFace with webdataset:
 
 ```bash
-import pillow_avif
 import webdataset as wds
 
 url = f"pipe:curl -s -L https://huggingface.co/datasets/jasperai/style-rank/resolve/main/stylerank_papers.tar"
 dataset = wds.WebDataset(url).decode('pil')
-next(iter(dataset))["jpg"].show()
+sample = next(iter(dataset))
+sample["jpg"].show()
+```
+
+The dataset contains `license`, `source`, `url`, `caption_blip`, `caption_cogvlm`, `style_caption` and `style_captionner` metadata located as follows:
+
+```shell
+sample = {
+    '__key__': image_key,
+    'jpg': image_data,
+    'json': {
+        'license': image_license,
+        'source': image_source,
+        'url': original_dataset_url,
+        'caption_blip': blip2_caption,
+        'caption_cogvlm': cogvlam_caption,
+        'style_caption': style_caption,
+        'style_captionner': style_captioner,
+    }
+}
 ```
 
 ### Inference
@@ -205,15 +223,15 @@ If you cancel the process, it will automatically save the results in the `/path/
 
 Running the evaluation on the provided `stylerank_papers.tar` dataset, we get the following results :
 
-| **Model**               | **ImageReward** | **Clip-Text** | **Clip-Image** | **Dinov2** |
-| ----------------------- | --------------- | ------------- | -------------- | ---------- |
-| StyleAligned            | -1.26           | 19.26         | 68.72          | 36.29      |
-| VisualStyle             | -0.72           | 22.12         | 66.68          | 20.80      |
-| IP-Adapter              | -2.03           | 15.01         | 83.66          | 40.50      |
-| Style-Shot              | -0.38           | 21.34         | 65.04          | 23.04      |
-| CSGO                    | -0.29           | 22.16         | 61.73          | 16.85      |
-| InstantStyle            | -0.13           | 22.78         | 66.43          | 18.48      |
-| Inversion-InstantStyle  | -1.30           | 18.90         | 76.60          | 49.42      |
+| **Model**               | **ImageReward ↓** | **Clip-Text ↑** | **Clip-Image ↑** | **Dinov2 ↑** |
+| ------------------------| ------------------| ----------------| -----------------| -------------|
+| StyleAligned            | -1.26             | 19.26           | 68.72            | 36.29        |
+| VisualStyle             | -0.72             | 22.12           | 66.68            | 20.80        |
+| IP-Adapter              | -2.03             | 15.01           | 83.66            | 40.50        |
+| Style-Shot              | -0.38             | 21.34           | 65.04            | 23.04        |
+| CSGO                    | -0.29             | 22.16           | 61.73            | 16.85        |
+| InstantStyle            | -0.13             | 22.78           | 66.43            | 18.48        |
+| Inversion-InstantStyle  | -1.30             | 18.90           | 76.60            | 49.42        |
   
 
 <img src="./data/clip_text_vs_clip_image.svg" alt="Results Clip-T vs Clip-I"/>
@@ -232,3 +250,15 @@ pytest tests/
 
 # License
 This code is released under the [Creative Commons BY-NC 4.0 license](https://creativecommons.org/licenses/by-nc/4.0/legalcode.en).
+
+
+# Citation
+If you find this work useful or use it in your research, please consider citing us
+
+```bibtex
+@misc{benaroche2024stylerank,
+  title={Style-Rank: Benchmarking stylization for diffusion models}, 
+  author=Eyal Benaroche and Clement Chadebec and Onur Tasar and Benjamin Aubin},
+  year={2024},
+  }
+```
