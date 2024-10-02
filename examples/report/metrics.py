@@ -6,7 +6,6 @@ from typing import List, Literal, Optional, Union
 
 import fire
 import pandas as pd
-import pillow_avif
 import torch
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor

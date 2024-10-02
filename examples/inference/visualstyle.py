@@ -5,7 +5,6 @@ from typing import List, Optional
 
 import fire
 import numpy as np
-import pillow_avif
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
 from tqdm import tqdm

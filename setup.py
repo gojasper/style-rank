@@ -32,7 +32,6 @@ setup(
         "lpips==0.1.4",
         "opencv-python==4.9.0.80",
         "peft==0.9.0",
-        "pillow-avif-plugin==1.4.6",
         "pydantic>=2.6.1",
         "numpy<=1.26.4",
         "scipy>=1.12.0",
