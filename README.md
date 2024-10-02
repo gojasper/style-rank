@@ -223,7 +223,7 @@ If you cancel the process, it will automatically save the results in the `/path/
 
 Running the evaluation on the provided `stylerank_papers.tar` dataset, we get the following results :
 
-| **Model**               | **ImageReward ↓** | **Clip-Text ↑** | **Clip-Image ↑** | **Dinov2 ↑** |
+| **Model**               | **ImageReward ↑** | **Clip-Text ↑** | **Clip-Image ↑** | **Dinov2 ↑** |
 | ------------------------| ------------------| ----------------| -----------------| -------------|
 | StyleAligned            | -1.26             | 19.26           | 68.72            | 36.29        |
 | VisualStyle             | -0.72             | 22.12           | 66.68            | 20.80        |
