@@ -1,12 +1,11 @@
 import os
 from pathlib import Path
 
-import pillow_avif
 import pytest
 import torch
 from PIL import Image
 
-from stylebench.models.styleshot import StyleShotConfig, StyleShotModel
+from stylerank.models.styleshot import StyleShotConfig, StyleShotModel
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 PATH = os.path.dirname(os.path.abspath(__file__))

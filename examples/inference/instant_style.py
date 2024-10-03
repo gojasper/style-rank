@@ -5,8 +5,6 @@ from typing import List, Optional
 
 import fire
 import numpy as np
-import pillow_avif
-import torch
 from PIL import Image
 from tqdm import tqdm
 
