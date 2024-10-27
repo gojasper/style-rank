@@ -1,6 +1,7 @@
 from .clip import ClipMetric, ClipMetricConfig
 from .dino import Dinov2Metric, Dinov2MetricConfig
 from .image_reward import ImageRewardMetric, ImageRewardMetricConfig
+from .llm import LlmMetricConfig, LlmMetric
 
 __all__ = [
     "ClipMetric",
@@ -9,4 +10,6 @@ __all__ = [
     "Dinov2MetricConfig",
     "ImageRewardMetric",
     "ImageRewardMetricConfig",
+    "LlmMetricConfig",
+    "LlmMetric"
 ]

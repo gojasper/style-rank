@@ -23,6 +23,8 @@ from stylerank.metrics import (
     Dinov2MetricConfig,
     ImageRewardMetric,
     ImageRewardMetricConfig,
+    LlmMetricConfig,
+    LlmMetric
 )
 
 PATH = os.path.dirname(os.path.abspath(__file__))
@@ -40,7 +42,7 @@ def load_image(image_path):
 
 
 def get_metric_config(
-    metric_name: Literal["ClipImage", "ClipText", "Dinov2", "ImageReward"]
+    metric_name: Literal["ClipImage", "ClipText", "Dinov2", "ImageReward", "Llm"]
 ):
     clip_image_config = ClipImageEmbedderConfig(
         version="openai/clip-vit-large-patch14",
@@ -70,6 +72,9 @@ def get_metric_config(
 
         case "ImageReward":
             return ImageRewardMetricConfig()
+        
+        case "Llm":
+            return LlmMetricConfig()
 
 
 def get_metric(metric_name: Literal["ClipImage", "ClipText", "Dinov2", "ImageReward"]):
@@ -83,12 +88,14 @@ def get_metric(metric_name: Literal["ClipImage", "ClipText", "Dinov2", "ImageRew
             return Dinov2Metric(metric_config)
         case "ImageReward":
             return ImageRewardMetric(metric_config)
+        case "Llm":
+            return LlmMetric(metric_config)
 
 
 def main(
     metrics: Union[
-        List[Literal["ClipImage", "ClipText", "Dinov2", "ImageReward"]],
-        Literal["ClipImage", "ClipText", "Dinov2", "ImageReward"],
+        List[Literal["ClipImage", "ClipText", "Dinov2", "ImageReward", "Llm"]],
+        Literal["ClipImage", "ClipText", "Dinov2", "ImageReward", "Llm"],
     ],
     input_path: Optional[str] = None,
     output_path: Optional[str] = None,

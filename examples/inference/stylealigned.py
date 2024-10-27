@@ -73,6 +73,77 @@ def get_json(json_path: str):
         data = json.load(f)
     return data
 
+def style_eval_internal(   
+):
+    """
+    Evaluates a models style transfer capabilities
+    """
+    prompts_json_path = os.path.join(PARENT_PATH, "data/internal_prompts.json")
+    style_refs_json_path = os.path.join(PARENT_PATH, "data/internal_style_refs.json")
+    output_path = os.path.join(PARENT_PATH, "output/style_eval/style_aligned")
+
+    prompts_json = get_json(prompts_json_path)
+    prompts_mapping = {
+        'simple_concepts': prompts_json['simple'],
+        'easy_concepts': prompts_json['easy'],
+        'medium_concepts': prompts_json['medium'],
+        'hard_concepts': prompts_json['hard']
+    }
+
+    model = get_model()
+
+    style_refs_json = get_json(style_refs_json_path)
+
+    evals = {}
+    for eval_name, eval_test_mapping in style_refs_json.items():
+        eval_dataloaders = {}
+        data_modules = {
+        k: get_data_module(v) for k,v in eval_test_mapping.items()
+        }
+        for _, dm in data_modules.items():
+            dm.setup()
+    
+        eval_dataloaders = {
+            k: v.train_dataloader() for k, v in data_modules.items()
+        }
+        evals[eval_name] = eval_dataloaders
+    print(f'evals:\n{evals}')
+
+
+    for style_eval_name, eval_dataloader_mapping in evals.items():
+        for eval_test_name, dataloader in eval_dataloader_mapping.items():
+            print('hello')
+            for batch in tqdm(dataloader):
+                image, data, key = batch["image"][0], batch["json"][0], batch["__key__"][0]
+                image_tensor = image.unsqueeze(0)
+                key = key.split("/")[-1].split(".")[0]
+
+                reference_image_caption = data["caption_blip"]
+                
+                # Randomly sample a simple, easy, medium, hard prompt
+                prompts = []
+                for _, concept_prompts in prompts_mapping.items():
+                    prompts.append(np.random.choice(concept_prompts))
+                print(f"prompts:\n{prompts}")
+
+                input_batch = {"image": image_tensor.to("cuda")}
+
+                images = model.sample(
+                    input_batch,
+                    prompts,
+                    style_prompt=reference_image_caption,
+                )
+
+                # Pop 1st image (reference)
+                images.pop(0)
+
+
+
+    os.makedirs(output_path, exist_ok=True)
+
+
+
+
 
 def main(
     input_path: Optional[str] = None,
@@ -139,4 +210,4 @@ def main(
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    fire.Fire(style_eval_internal)
